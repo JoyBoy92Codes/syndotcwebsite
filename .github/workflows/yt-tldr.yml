@@ -2,6 +2,7 @@ name: Build YouTube TLDRs
 on:
   schedule:
     - cron: "0 2 * * *"   # 02:00 UTC ~ 7pm PT (during PDT), ~6pm PT (during PST)
+    - cron: "0 3 * * *"  # ~7pm PT during PST
   workflow_dispatch: {}
 jobs:
   build:
