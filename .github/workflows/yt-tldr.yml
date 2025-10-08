@@ -1,0 +1,31 @@
+name: Build YouTube TLDRs
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC ~ 7pm PT (during PDT), ~6pm PT (during PST)
+  workflow_dispatch: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install OpenAI SDK
+        run: npm i openai@4
+      - name: Run builder
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CHANNEL_HANDLE: "@Syn.Trades"
+          SITE_URL: "https://yourdomain.com"   # <- change to your domain
+          SITE_TZ: "America/Los_Angeles"
+          MAX_ITEMS: "10"
+        run: node tools/build-yt-tldr.mjs
+      - name: Commit & push
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "yt-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: update latest.json, yt-index.json, summaries" || echo "No changes"
+          git push
