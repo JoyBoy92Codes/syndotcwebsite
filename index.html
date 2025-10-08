@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>syndotc trades — FIBs Suite ($XXX/mo)</title>
+  <meta name="description" content="FIBs Suite: Resistance/Support Trendlines, Range Trendlines, Break Levels, Hold Levels, and HTF‑Closures. $XXX/mo subscription, docs, and Discord community." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Single+Ink:wght@100..900&display=swap" rel="stylesheet">
+  <style>
+    
+    :root{
+      --bg:#0b0c10; --panel:#13141a; --muted:#9aa3b2; --brand:#14e1b7; --brand-2:#6a5cff;
+      --accent:#00ffd1; --border:rgba(255,255,255,.08); --ok:#30e88f; --danger:#ff6b6b;
+      --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
+    }
+    
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{min-height:100dvh;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#fff;line-height:1.6;-webkit-font-smoothing:antialiased;position:relative;}
+    /* Global, continuous background — fixed so it doesn't visually restart per section */
+    body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+      radial-gradient(1200px 600px at 20% -10%, rgba(106,92,255,.25), transparent 60%),
+      radial-gradient(1000px 500px at 90% 10%, rgba(20,225,183,.18), transparent 60%),
+      var(--bg);
+      background-repeat:no-repeat;}
+
+    a{color:var(--accent)}
+    .container{max-width:1120px;margin:0 auto;padding:0 1.25rem}
+
+    /* Header */
+    .topbar{position:sticky;top:0;z-index:50;background:linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.65));backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+    .nav{display:flex;align-items:center;justify-content:space-between;padding:.9rem 0}
+    .brand{display:flex;align-items:center;gap:.75rem;text-decoration:none}
+    .brand img{height:40px;width:auto;filter:drop-shadow(0 0 8px rgba(106,92,255,.35))}
+    .brand .name{font-weight:800;font-size: 3rem; font-family: "Bitcount Prop Single Ink", system-ui;}
+    .nav .actions{display:flex;gap:.5rem;align-items:center}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;font-weight:600;border-radius:10px;border:1px solid var(--border);padding:.6rem .9rem;color:#fff;text-decoration:none;transition:transform .15s ease, box-shadow .15s ease, background .15s ease}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-primary{background:linear-gradient(90deg,var(--brand-2),var(--brand));box-shadow:0 8px 24px rgba(106,92,255,.25)}
+    .btn-ghost{background:transparent}
+
+    /* Nav: docs dropdown */
+    .dropdown{position:relative}
+    .dropdown-menu{position:absolute;top:104%;right:0;min-width:300px;background:rgba(19,20,26,.98);border:1px solid var(--border);border-radius:12px;padding:.5rem;display:none;box-shadow:var(--shadow)}
+    .dropdown:hover .dropdown-menu{display:block}
+    .dropdown-menu a{display:block;padding:.55rem .65rem;border-radius:8px;color:#cfe7ff}
+    .dropdown-menu a:hover{background:rgba(255,255,255,.05)}
+
+    /* Hero */
+    .hero{position:relative;padding:72px 0 32px}
+    .hero-grid{max-width:1420px;display:grid;grid-template-columns:1.1fr 2fr;gap:2rem;align-items:center}
+    .kicker{display:inline-block;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:.35rem .75rem;margin-bottom:1rem}
+    h1{font-size:clamp(2rem,3.4vw,3.25rem);line-height:1.1;margin-bottom:1rem}
+    .lead{color:#cbd2dd;max-width:58ch;margin-bottom:1.25rem}
+    .badges{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.5rem}
+    .badge{border:1px solid var(--border);border-radius:999px;padding:.35rem .65rem;color:#cfe7ff;font-size:.85rem;background:rgba(255,255,255,.03)}
+    .hero-card{    background: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(0 0 0 / 16%));border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;box-shadow:var(--shadow)}
+    .hero-card img{width:100%;border-radius:12px;border:1px solid var(--border)}
+
+    /* Sections */
+    .section{padding:64px 0}
+    .section h2{font-size:clamp(1.5rem,2.4vw,2.25rem);margin-bottom:1rem}
+    .section p.section-lead{color:#cbd2dd;max-width:70ch}
+    .grid{display:grid;gap:1.25rem}
+    .grid.suite{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:2rem}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+    .card .thumb{aspect-ratio:16/9;background:#0f1016;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+    .card .thumb img{width:100%;height:100%;object-fit:cover}
+    .card .body{padding:1rem 1rem 1.25rem}
+    .card h3{font-size:1.1rem;margin-bottom:.4rem}
+    .card p{color:#aeb6c4;font-size:.95rem}
+    .meta{display:flex;gap:.75rem;flex-wrap:wrap;margin:.75rem 0}
+    .meta .pill{font-size:.75rem;border:1px solid var(--border);border-radius:999px;padding:.25rem .55rem;color:#cfe7ff}
+
+    /* Pricing */
+    .pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;margin-top:1.25rem}
+    .pricecard{background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));border:1px solid var(--border);border-radius:16px;padding:1.25rem;box-shadow:var(--shadow)}
+    .price{font-size:2rem;font-weight:800;margin:.25rem 0}
+    ul.list{margin:.75rem 0 0 0;padding-left:0;list-style:none;display:grid;gap:.5rem}
+    ul.list li{display:flex;gap:.6rem;align-items:flex-start}
+    .check{width:18px;height:18px;border-radius:4px;background:linear-gradient(90deg,var(--brand),var(--brand-2));display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .check svg{width:12px;height:12px}
+
+    /* Docs */
+    .docs{display:grid;grid-template-columns:280px 1fr;gap:1rem;margin-top:1.5rem}
+    .sidebar{position:sticky;top:76px;align-self:start;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);padding:.75rem}
+    .sidebar h4{font-size:.95rem;color:#cbd2dd;margin:.25rem .35rem}
+    .sidebar a{display:block;padding:.45rem .6rem;border-radius:8px;color:#cfe7ff}
+    .sidebar a:hover{background:rgba(255,255,255,.05)}
+    .doc{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);padding:1rem}
+    .doc h3{margin-top:.25rem}
+    .img-slot{border:1px dashed var(--border);border-radius:12px;height:200px;display:flex;align-items:center;justify-content:center;margin:.75rem 0;color:#9aa3b2}
+
+    /* Email → Discord funnel */
+    .cta-band{margin-top:1.5rem;border:1px solid var(--border);border-radius:12px;padding:1rem;background:rgba(255,255,255,.03)}
+    .inline-form{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
+    .input{flex:1 1 260px;background:#0f1016;border:1px solid var(--border);border-radius:10px;padding:.65rem .8rem;color:#fff}
+
+    /* Footer */
+    footer{border-top:1px solid var(--border);padding:28px 0;color:#a3acba}
+    footer .foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem}
+
+    @media (max-width: 920px){.hero-grid{grid-template-columns:1fr}.docs{grid-template-columns:1fr}}
+
+    ul, ol {
+          width: 90%;
+    padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Navigation -->
+  <div class="topbar">
+    <div class="container nav">
+      <a class="brand" href="#">
+        <!-- <img src="/logonotext.png" alt="syndotc trades logo" /> -->
+        <span class="name">syndotc™</span>
+      </a>
+      <div class="actions">
+        <a class="btn btn-ghost" href="#suite">FIBs Suite</a>
+        <div class="dropdown">
+          <a class="btn btn-ghost" href="#docs">Docs ▾</a>
+          <div class="dropdown-menu" role="menu">
+            <a href="#doc-rs">Plotting Resistance / Support Trendlines</a>
+            <a href="#doc-range">What is a Range?</a>
+            <a href="#doc-break-origin">Break vs Origin Levels</a>
+            <a href="#doc-hold">Hold Levels (1v1, 1v2, 2v1, 2v2)</a>
+            <a href="#doc-htf">HTF‑Closures & LTF Sync</a>
+          </div>
+        </div>
+        <a class="btn btn-primary" href="#buy">Start $XXX/mo</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="container hero-grid">
+      <div>
+        <span class="kicker">Introducing</span>
+        <h1>FIBs Suite — professional indicators for precision trading</h1>
+        <p class="lead">Five interoperable TradingView indicators engineered for structure‑first trading: <strong>Resistance/Support Trendlines</strong>, <strong>Range Trendlines</strong>, <strong>Break Levels</strong>, <strong>Hold Levels</strong>, and <strong>HTF‑Closures</strong>. $XXX/month, cancel anytime.</p>
+        <div class="badges">
+          <span class="badge">Strategy‑agnostic • price action first</span>
+          <span class="badge">Multi‑timeframe aware</span>
+          <span class="badge">Low‑noise visuals</span>
+        </div>
+        <div style="margin-top:1.25rem;display:flex;gap:.75rem;flex-wrap:wrap">
+          <a class="btn btn-primary" href="#buy">Subscribe $XXX/mo</a>
+          <a class="btn btn-ghost" href="https://www.tradingview.com/chart/SOLUSDT.P/Ig4jNfGR-FIBs-Suite-Example/" target="_blank">Preview</a>
+        </div>
+      </div>
+      <div>
+        <div class="hero-card">
+          <img src="img/fibsuite.png" alt="FIBs Suite cover preview" />
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- What’s inside -->
+  <section class="section" id="suite">
+    <div class="container">
+      <h2>What’s inside the FIBs Suite</h2>
+      <p class="section-lead">Each tool is powerful on its own — but together they form a cohesive flow: find structure, mark intent, confirm, and execute with clarity.</p>
+      <div class="grid suite" id="indicators">
+        <!-- 5 cards (Included tags only) -->
+        <article class="card"><div class="thumb"><img src="img/ressuptrendind.png" alt="Resistance/Support Trendlines Indicator"></div><div class="body"><h3>Resistance/Support Trendlines</h3><p>Auto‑detects and maintains dynamic trendlines with depth controls, touch/break logic, and clean labeling for fast reads.</p><div class="meta"><span class="pill">Arrayed Trend Mode</span><span class="pill">Adapt-Mode</span><span class="pill">Depth Levels 1–9</span><span class="pill">Create/Break alerts</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/rangeind.png" alt="Range Trendlines Indicator"></div><div class="body"><h3>Range Trendlines</h3><p>Identifies accumulation/distribution ranges and draws wick‑to‑wick trendlines with real‑time touch/break tracking.</p><div class="meta"><span class="pill">ACCUM / DISTR</span><span class="pill">Create/Break/Touch alerts</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/breaksind.png" alt="Break Levels Indicator"></div><div class="body"><h3>Break Levels</h3><p>Marks decisive structure breaks with revisit logic and purity filters to separate signal from noise.</p><div class="meta"><span class="pill">Dynamic Updates</span><span class="pill">Create/Break/Touch alerts</span><span class="pill">Create alerts</span><span class="pill">Revisit checks</span><span class="pill">Pure / non‑pure</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/holdsind.png" alt="Hold Levels Indicator" ></div><div class="body"><h3>Hold Levels</h3><p>Detects and classifies 1v1, 1v2, 2v1, 2v2 holds with dynamic pending/active/completed states for execution support.</p><div class="meta"><span class="pill">Lifecycle states</span><span class="pill">Create/Activated alerts</span><span class="pill">Leverage Calculation</span><span class="pill">Adjustable % Move Search</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/htfind.png" alt="HTF‑Closures Indicator" style="max-height: 193px !important; object-position: top;"></div><div class="body"><h3>HTF‑Closures</h3><p>Tracks higher‑timeframe + fractal candle closures.</p><div class="meta"><span class="pill">HTF Closes Today/Tomorrow</span><span class="pill">Real-Time Fractal closures</span><span class="pill">Multi-TF sync</span><span class="pill">Market Session‑aware</span></div></div></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing / Purchase: ONLY $XXX/mo plan -->
+  <section class="section" id="buy">
+    <div class="container">
+      <h2>Subscribe to the FIBs Suite</h2>
+      <p class="section-lead">$XXX/month • Cancel anytime • TradingView invite‑only access</p>
+      <div class="pricing">
+        <div class="pricecard">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem">
+            <h3>FIBs Suite (All 5)</h3>
+            <span class="pill" style="border:1px solid var(--border);padding:.25rem .5rem;border-radius:999px;background:rgba(106,92,255,.15)">Subscription</span>
+          </div>
+          <div class="price">$XXX<span style="font-size:1rem;color:#cbd2dd;font-weight:700">/mo</span></div>
+          <ul class="list">
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>All five indicators (invite‑only)</span></li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>MTF presets & templates</span></li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Members‑only Discord</span></li>
+          </ul>
+          <div style="display:flex;gap:.6rem;margin-top:1rem">
+            <button id="subscribeBtn" class="btn btn-primary">Subscribe with Stripe</button>
+            <a class="btn btn-ghost" href="#docs">Read the Docs</a>
+          </div>
+          <p style="margin-top:.75rem;color:#a3acba;font-size:.9rem">After checkout, you'll receive an email to submit your TradingView username for access.</p>
+        </div>
+        <div class="pricecard" aria-label="license notes">
+          <h3>License & Requirements</h3>
+          <ul class="list" style="margin-top:.5rem">
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Platform: TradingView (Invite‑Only Scripts)</span></li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Delivery: access granted ASAP (check email)</span></li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Billing: monthly via Stripe • cancel anytime</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Email → Discord funnel -->
+      <div class="cta-band">
+        <h3 style="margin-bottom:.35rem">Get the free Discord invite</h3>
+        <p style="color:#cbd2dd">Drop your email to get the invite link and occasional setup tips. No spam.</p>
+        <form id="discordForm" class="inline-form" novalidate>
+          <input id="email" type="email" required placeholder="you@email.com" class="input" />
+          <label style="display:flex;gap:.4rem;align-items:center;color:#a3acba;font-size:.9rem"><input id="consent" type="checkbox" required /> I agree to receive emails about the suite.</label>
+          <button class="btn btn-primary" type="submit">Send me the invite</button>
+          <a id="inviteLink" class="btn btn-ghost" style="display:none" href="https://discord.gg/yourInvite" target="_blank" rel="noopener">Open Discord</a>
+        </form>
+        <p id="discordMsg" style="margin-top:.5rem;color:#a3acba;font-size:.9rem"></p>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="section" id="latest-video">
+  <div class="container">
+    <h2>Latest on YouTube</h2>
+    <article class="card" style="padding:1rem">
+      <div class="thumb" style="aspect-ratio:16/9;border-radius:12px;overflow:hidden" id="yt-embed-latest"></div>
+      <div class="body">
+        <h3 id="yt-title">Loading…</h3>
+        <p id="yt-date" style="color:#9aa3b2"></p>
+        <ul id="yt-tldr" style="color:#cbd2dd"></ul>
+        <a class="btn btn-ghost" id="yt-link" href="#" target="_blank" rel="noopener">Watch on YouTube</a>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="section" id="recent-videos">
+  <div class="container">
+    <h2>Recent video summaries</h2>
+    <div class="grid suite" id="yt-list"><!-- filled by JS --></div>
+    <div style="margin-top:1rem">
+      <a class="btn btn-ghost" href="/summaries.html">See all summaries</a>
+    </div>
+  </div>
+</section>
+
+
+  <!-- Docs Hub -->
+  <section class="section" id="docs">
+    <div class="container">
+      <h2>Documentation</h2>
+      <div class="docs">
+        <aside class="sidebar">
+          <h4>Topics</h4>
+          <a href="#doc-rs">Resistance / Support Trendlines</a>
+          <a href="#doc-range">What is a Range?</a>
+          <a href="#doc-break-origin">Break vs Origin Levels</a>
+          <a href="#doc-hold">Hold Levels</a>
+          <a href="#doc-htf">HTF‑Closures & LTF Sync</a>
+        </aside>
+        <div>
+          <article class="doc" id="doc-rs">
+            <h3>Plotting Resistance / Support Trendlines</h3>
+            <p><strong>Goal.</strong> Identify dynamic supply (resistance) and demand (support) with consistent rules so touches and breaks are unambiguous.</p>
+            <ol>
+              <li><strong>Anchor selection.</strong> Start at swing points with clear displacement. Prefer wicks that represent rejection. Our indicator has the ability to adapt anchors as depth increases.</li>
+              <li><strong>Depth.</strong> Depth is the count of interior trends the main exterior trend has. Higher depth ⇒ higher precision. We track up to <em>9 depths</em> to ensure the visualization of trend continuation.</li>
+              <li><strong>Continuation vs reversal.</strong> A line that continues to hold after multiple touches often compresses price into a break. Watch for LTF confluence before the break. Typically reversals happen after 5-6 trend breaks on a given side. We've integrated alerts for trend creation and trend breaking. Once you've established your anchors, the indicator takes care of the rest. </li>
+            </ol>
+            <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
+              <source src="vid/ressuptrendloop.mp4" type="video/mp4">
+            </video>
+            <h4>Tips</h4>
+            <ul>
+              <li>Use higher‑TF trendlines as bias; time entries on LTF breaks/retakes.</li>
+              <li>Use <em>Array Mode</em> to establish high precision trendlines, as those typically show better entry points for a swing.</li>
+              <li>Avoid drawing through noisy ranges — promote to fresh anchors when structure shifts.</li>
+            </ul>
+          </article>
+
+          <article class="doc" id="doc-range" style="margin-top:1rem">
+            <h3>What is a Range?</h3>
+            <p>A <strong>range</strong> is a sequence of at least two same‑type candles (accumulation or distribution) forming an area of price movement. We store the lifecycle of each range trendline so you can be alerted for Creation/First-Touch/Breaking/Broken-First-Touch.</p>
+            <ul>
+              <li><strong>Accumulation</strong>: buyers absorb supply; expect upside continuation.</li>
+              <li><strong>Distribution</strong>: sellers absorb demand; expect downside continuation.</li>
+            </ul>
+            <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
+              <source src="vid/rangeloop.mp4" type="video/mp4">
+            </video>
+            <p><em>Trading note:</em> First touches and Breaks of ranges often precede impulsive moves — combine with HTF bias.</p>
+          </article>
+
+          <article class="doc" id="doc-break-origin" style="margin-top:1rem">
+            <h3>Break vs Origin Levels</h3>
+            <p><strong>Break level</strong>: levels that represent a ranges starting price. <strong>Origin</strong>: a break level that has been touched (but not broken) and often seeds future reactions.</p>
+            <ul>
+              <li><strong>Break logic</strong>: close beyond the boundary → status becomes <em>broken</em>.</li>
+              <li><strong>Origin logic</strong>: a touch after creation without a break often elevate a level’s significance to an Origin.</li>
+              <li><strong>First touch</strong>: high‑quality entries commonly occur on the first return to a fresh origin.</li>
+            </ul>
+            <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
+              <source src="/breakoriginsloop.mp4" type="video/mp4">
+            </video>
+            <p>We store the lifecycle of each break/origin level so you can be alerted for Creation/First-Touch/Origin Creation/Level Broken/Broken-First-Touch.</p>
+            <p>Combine LTF origin creation (3m→5m→15m→60m) with HTF context to anticipate reversals before they appear on HTF candles.</p>
+          </article>
+
+          <article class="doc" id="doc-hold" style="margin-top:1rem">
+            <h3>Hold Levels (1v1, 1v2, 2v1, 2v2)</h3>
+            <p><strong>Hold</strong> patterns are micro‑structures that show absorption. We classify creation, activation, and completion states:</p>
+            <ul>
+              <li><strong>Pending</strong>: pattern identified; entry waiting.</li>
+              <li><strong>Active</strong>: entry touched; stop/target live.</li>
+              <li><strong>Completed</strong>: win/loss resolved by stop or target.</li>
+            </ul>
+            <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
+              <source src="vid/holdsloop.mp4" type="video/mp4">
+            </video>
+            <p>Use holds to fine‑tune risk within HTF levels; avoid chasing after big runs until confirmation returns.</p>
+          </article>
+
+          <article class="doc" id="doc-htf" style="margin-top:1rem">
+            <h3>HTF‑Closures & LTF Sync</h3>
+            <p>Track higher‑timeframe (HTF) candle closures while operating on lower timeframes (LTFs). When LTFs build origins in the direction opposite a hit HTF level, momentum shift is brewing.</p>
+            <ul>
+              <li>Use <strong>HTF closure tables</strong> to know when key candles will finalize.</li>
+              <li>Use <strong>LTF fractal closure info</strong> to assist in detecting where moves might happen next.</li>
+              <li>Look for LTF origin/hold confluence during the HTF wait window.</li>
+            </ul>
+            <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
+              <source src="vid/htfloop.mp4" type="video/mp4">
+            </video>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social proof -->
+  <section class="section" style="padding-top:24px">
+    <div class="container">
+      <div class="card" style="padding:1.25rem">
+        <p style="color:#cbd2dd">The FIBs Suite distills years of structure‑driven research into reliable visual tools. Whether you scalp or swing, the components layer to reveal context before the crowd.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container foot">
+      <div style="display:flex;align-items:center;gap:.6rem">
+        <img src="img/logonotext.png" alt="syndotc mark" style="height:22px;width:auto"/>
+        <span>© <span id="year"></span> syndotc™. All rights reserved.</span>
+      </div>
+      <nav style="display:flex;gap:1rem;flex-wrap:wrap">
+        <a href="/terms.html" style="color:#a3acba">Terms</a>
+        <a href="/privacy.html" style="color:#a3acba">Privacy</a>
+        <a href="mailto:support@syndotc.com" style="color:#a3acba">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+  <!-- Stripe.js (publishable key required to enable) -->
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    // current year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ===== Discord funnel (client-side demo) =====
+    const discordForm = document.getElementById('discordForm');
+    const inviteLink  = document.getElementById('inviteLink');
+    const discordMsg  = document.getElementById('discordMsg');
+    discordForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const ok = document.getElementById('consent').checked;
+      if(!email || !ok){ discordMsg.textContent = 'Please enter a valid email and agree to emails.'; return; }
+      // TODO: POST to your backend or ESP (ConvertKit/Mailchimp/etc.)
+      localStorage.setItem('fibs_email', email);
+      inviteLink.style.display = 'inline-flex';
+      discordMsg.textContent = 'Thanks! Your Discord invite is ready.';
+    });
+
+    // ===== Stripe Checkout (prep) =====
+    // Replace with your real publishable key and Price ID from Stripe
+    const STRIPE_PUBLISHABLE_KEY = 'pk_test_REPLACE_ME';
+    const PRICE_ID_MONTHLY = 'price_REPLACE_ME_99_MONTHLY';
+
+    const subscribeBtn = document.getElementById('subscribeBtn');
+    subscribeBtn?.addEventListener('click', async () => {
+      if (STRIPE_PUBLISHABLE_KEY.includes('REPLACE_ME')) {
+        alert('Stripe is not configured yet. Add your publishable key & price id in the script.');
+        return;
+      }
+      const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+      // Option A (client-only Checkout for simple products if allowed):
+      // If you use the client-only flow, you must create a Checkout Session on the server or use Payment Links.
+      // Below is a minimal fetch to your backend route that creates the session.
+      try {
+        const res = await fetch('/create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priceId: PRICE_ID_MONTHLY }) });
+        const data = await res.json();
+        if(!data.id){ throw new Error('Missing session id'); }
+        const { error } = await stripe.redirectToCheckout({ sessionId: data.id });
+        if (error) alert(error.message);
+      } catch (err) {
+        console.error(err);
+        alert('Unable to start checkout. Configure your backend /create-checkout-session route.');
+      }
+    });
+
+
+
+  
+  (async function () {
+    try {
+      // Fetch data from your JSON files
+      const latestRes = await fetch('/latest.json', { cache: 'no-store' });
+      const indexRes  = await fetch('/yt-index.json', { cache: 'no-store' });
+      if (!latestRes.ok || !indexRes.ok) throw new Error('JSON fetch failed');
+
+      const latest = await latestRes.json();
+      const index  = await indexRes.json();
+
+      // ---- LATEST VIDEO ----
+      var embedUrl = "https://www.youtube.com/embed/" + latest.videoId + "?rel=0&modestbranding=1";
+      var embedHtml =
+        '<iframe src="' + embedUrl + '" title="' + latest.title + '" frameborder="0" ' +
+        'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ' +
+        'allowfullscreen loading="lazy" style="width:100%;height:100%"></iframe>';
+
+      document.getElementById('yt-embed-latest').innerHTML = embedHtml;
+      document.getElementById('yt-title').textContent = latest.title;
+      document.getElementById('yt-date').textContent = latest.datePT ? "Published: " + latest.datePT + " (PT)" : "";
+      document.getElementById('yt-link').href = latest.url;
+
+      var ul = document.getElementById('yt-tldr');
+      ul.innerHTML = '';
+      if (latest.bullets && latest.bullets.length) {
+        for (var i = 0; i < latest.bullets.length; i++) {
+          var li = document.createElement('li');
+          li.textContent = latest.bullets[i];
+          ul.appendChild(li);
+        }
+      }
+
+      // ---- RECENT LIST ----
+      var list = document.getElementById('yt-list');
+      list.innerHTML = '';
+
+      if (index.items && index.items.length) {
+        for (var j = 0; j < Math.min(index.items.length, 6); j++) {
+          var v = index.items[j];
+
+          var a = document.createElement('a');
+          a.className = 'card';
+          a.href = v.permalink;
+          a.target = '_self';
+
+          var thumb = document.createElement('div');
+          thumb.className = 'thumb';
+          var img = document.createElement('img');
+          img.src = 'https://img.youtube.com/vi/' + v.videoId + '/hqdefault.jpg';
+          img.alt = v.title;
+          img.loading = 'lazy';
+          thumb.appendChild(img);
+
+          var body = document.createElement('div');
+          body.className = 'body';
+          var h3 = document.createElement('h3');
+          h3.textContent = v.title;
+          body.appendChild(h3);
+
+          var p = document.createElement('p');
+          p.style.color = '#aeb6c4';
+          if (v.bullets && v.bullets.length) {
+            p.textContent = v.bullets.join(' · ');
+          }
+          body.appendChild(p);
+
+          a.appendChild(thumb);
+          a.appendChild(body);
+          list.appendChild(a);
+        }
+      }
+    } catch (e) {
+      console.warn('YT TL;DR not ready yet:', e);
+    }
+  })();
+
+  </script>
+</body>
+</html>
