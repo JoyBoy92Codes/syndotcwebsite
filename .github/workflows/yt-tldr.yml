@@ -18,7 +18,7 @@ jobs:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CHANNEL_HANDLE: "@Syn.Trades"
-          SITE_URL: "https://yourdomain.com"   # <- change to your domain
+          SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"   # <- change to your domain
           SITE_TZ: "America/Los_Angeles"
           MAX_ITEMS: "10"
         run: node tools/build-yt-tldr.mjs
