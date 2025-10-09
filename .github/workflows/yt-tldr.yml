@@ -22,7 +22,7 @@ jobs:
       - name: Run builder
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CHANNEL_ID: "UCOAfLa4v3gvElJQbPfa7L_Q"
+          CHANNEL_ID: "UCZYoGap4Hbtzfpz0V3HtkYg"
           SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"   # <- change to your domain
           SITE_TZ: "America/Los_Angeles"
           MAX_ITEMS: "10"
