@@ -149,7 +149,7 @@ async function fetchRecentVideosRSS(channelId, max = 8) {
   const indexItems = [];
   for (const s of summarized) {
     const slug = `${toPTDate(s.publishedAt)}-${slugify(s.title)}`;
-    const permalink = `/summaries/${slug}.html`;
+    const permalink = `summaries/${slug}.html`;
     indexItems.push({ title: s.title, datePT: toPTDate(s.publishedAt), url: s.url, videoId: s.videoId, bullets: s.bullets, permalink });
     const html = summaryHtml({ title: s.title, datePT: toPTDate(s.publishedAt), url: s.url, videoId: s.videoId, bullets: s.bullets });
     await fs.writeFile(path.join(SUMMARIES_DIR, `${slug}.html`), html, 'utf8');
