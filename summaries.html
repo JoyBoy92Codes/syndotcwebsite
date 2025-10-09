@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Video Summaries — syndotc™</title>
-<link rel="icon" href="/favicon.ico">
+<link rel="icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -15,26 +15,50 @@
   .thumb img{width:100%;height:100%;object-fit:cover}
   .body{padding:1rem 1rem 1.25rem}
   a{color:#00ffd1;text-decoration:none}
+  .muted{color:#9aa3b2}
 </style>
 </head>
 <body>
   <div class="container">
     <h1>Video Summaries</h1>
+    <p id="status" class="muted">Loading…</p>
     <div id="list" class="grid"></div>
   </div>
+
   <script>
     (async function(){
+      const status = document.getElementById('status');
       try {
-        var index = await fetch('/yt-index.json', { cache:'no-store' }).then(r=>r.json());
-        var list  = document.getElementById('list'); list.innerHTML = '';
-        (index.items||[]).forEach(function(v){
-          var a = document.createElement('a'); a.href = v.permalink; a.className='card';
+        // IMPORTANT: relative path so it works at /syndotcwebsite/
+        const res = await fetch('yt-index.json', { cache:'no-store' });
+        if (!res.ok) throw new Error('Failed to load yt-index.json: ' + res.status);
+        const index = await res.json();
+
+        const items = Array.isArray(index.items) ? index.items : [];
+        const list  = document.getElementById('list');
+        list.innerHTML = '';
+
+        if (!items.length) {
+          status.textContent = 'No summaries yet.';
+          return;
+        }
+
+        status.remove();
+
+        items.forEach(function(v){
+          // v.permalink should be relative like "summaries/2025-10-08-foo.html"
+          const a = document.createElement('a');
+          a.href = v.permalink;
+          a.className = 'card';
           a.innerHTML =
             '<div class="thumb"><img src="https://img.youtube.com/vi/'+v.videoId+'/hqdefault.jpg" alt="'+v.title+'" loading="lazy"></div>'+
-            '<div class="body"><h3>'+v.title+'</h3><p style="color:#9aa3b2">'+v.datePT+'</p><p style="color:#cbd2dd">'+(v.bullets||[]).join(' · ')+'</p></div>';
+            '<div class="body"><h3>'+v.title+'</h3><p class="muted">'+(v.datePT||'')+'</p><p style="color:#cbd2dd">'+((v.bullets||[]).join(' · '))+'</p></div>';
           list.appendChild(a);
         });
-      } catch(e) { console.warn(e); }
+      } catch(e) {
+        console.warn(e);
+        status.textContent = 'Could not load summaries.';
+      }
     })();
   </script>
 </body>
