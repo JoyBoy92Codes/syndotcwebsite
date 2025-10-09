@@ -16,8 +16,8 @@ jobs:
         run: npm i openai@4
       - name: Run builder
         env:
-          YT_API_KEY: ${secrets.YT_API_KEY}
-          OPENAI_API_KEY: ${secrets.OPENAI_API_KEY}
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CHANNEL_HANDLE: "@joyboy_charting_92"
           SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"   # <- change to your domain
           SITE_TZ: "America/Los_Angeles"
