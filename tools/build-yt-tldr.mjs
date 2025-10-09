@@ -5,7 +5,7 @@ import { OpenAI } from 'openai';
 // ---- env ----
 const YT_API_KEY     = process.env.YT_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const CHANNEL_HANDLE = process.env.CHANNEL_HANDLE || '@Syn.Trades';
+const CHANNEL_HANDLE = process.env.CHANNEL_HANDLE || '@joyboy_charting_92';
 const SITE_URL       = (process.env.SITE_URL || '').replace(/\/$/, '');
 const SITE_TZ        = process.env.SITE_TZ || 'America/Los_Angeles';
 const MAX_ITEMS      = Number(process.env.MAX_ITEMS || 10);
