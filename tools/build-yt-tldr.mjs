@@ -1,6 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { OpenAI } from 'openai';
+import { YoutubeTranscript } from 'youtube-transcript';
+
+async function fetchTranscriptText(videoId) {
+  try {
+    const parts = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
+    // Join, cap length to keep tokens small
+    return parts.map(p => p.text).join(' ').replace(/\s+/g,' ').slice(0, 6000);
+  } catch {
+    return ''; // no transcript available
+  }
+}
 
 const YT_API_KEY     = process.env.YT_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -29,19 +40,30 @@ function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'').slice(0,80);
 }
 async function summarizeItem(v) {
-  const prompt = `Write a very short TL;DR for a trading video in 2–3 bullets (<=60 words total).
-Be objective. Focus on structure (levels/ranges, holds/origins, momentum shifts, invalidation). Avoid hype/advice.
+  const transcript = await fetchTranscriptText(v.videoId);
+  const sourceText = transcript || v.description || '';
+
+  // If we have no reliable text, avoid numbers entirely.
+  const numberRule = transcript
+    ? 'When you mention numbers (prices, levels, %), COPY THEM EXACTLY as they appear in the transcript (including k/M). Do not round or guess.'
+    : 'Avoid specific numbers (prices/levels/%). Use generic phrasing like “key level”, “range highs/lows”.';
+
+  const prompt = `Write a concise TL;DR in 4–6 bullets (<=220 words total).
+- Be objective and structure-first (levels/ranges, holds/origins, momentum shifts, invalidation).
+- ${numberRule}
+- If a number is unclear or not present, write "n/a" or omit it.
 Return JSON: {"bullets":["...","..."]}
 
 Title: ${v.title}
-Description: ${v.description?.slice(0, 1200) || ''}`;
+SourceText: ${sourceText}`;
+
   try {
     const res = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You are a concise trading note-taker for a website." },
+        { role: "system", content: "You are a precise trading note-taker. Never invent numbers." },
         { role: "user", content: prompt }
       ]
     });
@@ -53,6 +75,7 @@ Description: ${v.description?.slice(0, 1200) || ''}`;
     return { ...v, bullets: fallback.length ? fallback : ["Summary pending."] };
   }
 }
+
 function summaryHtml({ title, datePT, url, videoId, bullets }) {
   const metaDesc = (bullets||[]).join(' • ').slice(0,155);
   const og = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;

@@ -12,8 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - name: Install OpenAI SDK
-        run: npm i openai@4
+
+      - name: Install deps
+        run: npm i openai@4 youtube-transcript
+
 
       - name: Sanity check YouTube key
         run: |
