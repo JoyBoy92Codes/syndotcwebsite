@@ -128,6 +128,7 @@
           <a class="btn btn-ghost" href="#docs">Docs ▾</a>
           <div class="dropdown-menu" role="menu">
             <a href="#doc-rs">Plotting Resistance / Support Trendlines</a>
+            <a href="#doc-arrayed">Plotting Arrayed Trendlines</a>
             <a href="#doc-range">What is a Range?</a>
             <a href="#doc-break-origin">Break vs Origin Levels</a>
             <a href="#doc-hold">Hold Levels (1v1, 1v2, 2v1, 2v2)</a>
@@ -145,7 +146,7 @@
       <div>
         <span class="kicker">Introducing</span>
         <h1>FIBs Suite — professional indicators for precision trading</h1>
-        <p class="lead">Five interoperable TradingView indicators engineered for structure‑first trading: <strong>Resistance/Support Trendlines</strong>, <strong>Range Trendlines</strong>, <strong>Break Levels</strong>, <strong>Hold Levels</strong>, and <strong>HTF‑Closures</strong>. $XXX/month, cancel anytime.</p>
+        <p class="lead">Six interoperable TradingView indicators engineered for structure‑first trading: <strong>Standard Single Timeframe Trends - Support & Resistance</strong>, <strong>Advanced Time Arrayed Trends - Support & Resistance</strong>, <strong>Range Trendlines</strong>, <strong>Break Levels</strong>, <strong>Hold Levels</strong>, and <strong>HTF‑Closures</strong>. $XXX/month, cancel anytime.</p>
         <div class="badges">
           <span class="badge">Strategy‑agnostic • price action first</span>
           <span class="badge">Multi‑timeframe aware</span>
@@ -171,10 +172,11 @@
       <p class="section-lead">Each tool is powerful on its own — but together they form a cohesive flow: find structure, mark intent, confirm, and execute with clarity.</p>
       <div class="grid suite" id="indicators">
         <!-- 5 cards (Included tags only) -->
-        <article class="card"><div class="thumb"><img src="img/ressuptrendind.png" alt="Resistance/Support Trendlines Indicator"></div><div class="body"><h3>Resistance/Support Trendlines</h3><p>Auto‑detects and maintains dynamic trendlines with depth controls, touch/break logic, and clean labeling for fast reads.</p><div class="meta"><span class="pill">Arrayed Trend Mode</span><span class="pill">Adapt-Mode</span><span class="pill">Depth Levels 1–9</span><span class="pill">Create/Break alerts</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/ressuptrendind.png" alt="Standard Single Timeframe Trends - Support & Resistance"></div><div class="body"><h3>Standard Single Timeframe Trends - Support & Resistance</h3><p>Auto‑detects and maintains dynamic trendlines with depth controls, touch/break logic, and clean labeling for fast reads.</p><div class="meta"><span class="pill">Adapt-Mode</span><span class="pill">Depth Levels 1–12</span><span class="pill">Create/Break alerts</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/arrayedind.png" alt="Advanced Time Arrayed Trends - Support & Resistance"></div><div class="body"><h3>Advanced Time Arrayed Trends - Support & Resistance</h3><p>Allows construction of arrayed trendlines, maintains dynamic trendlines with depth controls, touch/break logic, and clean labeling for fast reads.</p><div class="meta"><span class="pill">Arrayed Trend Mode</span><span class="pill">Depth Levels 1–12</span><span class="pill">Create/Break alerts</span></div></div></article>
         <article class="card"><div class="thumb"><img src="img/rangeind.png" alt="Range Trendlines Indicator"></div><div class="body"><h3>Range Trendlines</h3><p>Identifies accumulation/distribution ranges and draws wick‑to‑wick trendlines with real‑time touch/break tracking.</p><div class="meta"><span class="pill">ACCUM / DISTR</span><span class="pill">Create/Break/Touch alerts</span></div></div></article>
-        <article class="card"><div class="thumb"><img src="img/breaksind.png" alt="Break Levels Indicator"></div><div class="body"><h3>Break Levels</h3><p>Marks decisive structure breaks with revisit logic and purity filters to separate signal from noise.</p><div class="meta"><span class="pill">Dynamic Updates</span><span class="pill">Create/Break/Touch alerts</span><span class="pill">Create alerts</span><span class="pill">Revisit checks</span><span class="pill">Pure / non‑pure</span></div></div></article>
-        <article class="card"><div class="thumb"><img src="img/holdsind.png" alt="Hold Levels Indicator" ></div><div class="body"><h3>Hold Levels</h3><p>Detects and classifies 1v1, 1v2, 2v1, 2v2 holds with dynamic pending/active/completed states for execution support.</p><div class="meta"><span class="pill">Lifecycle states</span><span class="pill">Create/Activated alerts</span><span class="pill">Leverage Calculation</span><span class="pill">Adjustable % Move Search</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/breaksind.png" alt="Break Levels Indicator"></div><div class="body"><h3>Break Levels</h3><p>Marks decisive structure breaks with revisit logic and purity filters to separate signal from noise.</p><div class="meta"><span class="pill">Dynamic Updates</span><span class="pill">Create/Break/Touch alerts</span><span class="pill">Revisit checks</span><span class="pill">Pure / non‑pure</span></div></div></article>
+        <article class="card"><div class="thumb"><img src="img/holdsind.png" alt="Hold Levels Indicator" ></div><div class="body"><h3>Hold Levels</h3><p>Detects and classifies 1v1, 1v2, 2v1, 2v2 holds with dynamic pending/active/completed states for execution support.</p><div class="meta"><span class="pill">Lifecycle states</span><span class="pill">Create/Activate alerts</span><span class="pill">Leverage Calculation</span><span class="pill">Estimated Liquidation Prices</span><span class="pill">Adjustable % Move Search</span></div></div></article>
         <article class="card"><div class="thumb"><img src="img/htfind.png" alt="HTF‑Closures Indicator" style="max-height: 193px !important; object-position: top;"></div><div class="body"><h3>HTF‑Closures</h3><p>Tracks higher‑timeframe + fractal candle closures.</p><div class="meta"><span class="pill">HTF Closes Today/Tomorrow</span><span class="pill">Real-Time Fractal closures</span><span class="pill">Multi-TF sync</span><span class="pill">Market Session‑aware</span></div></div></article>
       </div>
     </div>
@@ -188,12 +190,12 @@
       <div class="pricing">
         <div class="pricecard">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem">
-            <h3>FIBs Suite (All 5)</h3>
+            <h3>FIBs Suite (All 6)</h3>
             <span class="pill" style="border:1px solid var(--border);padding:.25rem .5rem;border-radius:999px;background:rgba(106,92,255,.15)">Subscription</span>
           </div>
           <div class="price">$XXX<span style="font-size:1rem;color:#cbd2dd;font-weight:700">/mo</span></div>
           <ul class="list">
-            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>All five indicators (invite‑only)</span></li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>All six indicators (invite‑only)</span></li>
             <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>MTF presets & templates</span></li>
             <li><span class="check"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6L9 17l-5-5" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>Members‑only Discord</span></li>
           </ul>
@@ -262,7 +264,7 @@
       <div class="docs">
         <aside class="sidebar">
           <h4>Topics</h4>
-          <a href="#doc-rs">Resistance / Support Trendlines</a>
+          <a href="#doc-rs">Standard/Advanced Trends - Support & Resistance</a>
           <a href="#doc-range">What is a Range?</a>
           <a href="#doc-break-origin">Break vs Origin Levels</a>
           <a href="#doc-hold">Hold Levels</a>
@@ -272,11 +274,11 @@
           <article class="doc" id="doc-rs">
             <h3>Plotting Resistance / Support Trendlines</h3>
             <p><strong>Goal.</strong> Identify dynamic supply (resistance) and demand (support) with consistent rules so touches and breaks are unambiguous.</p>
-            <ol>
+            <ul>
               <li><strong>Anchor selection.</strong> Start at swing points with clear displacement. Prefer wicks that represent rejection. Our indicator has the ability to adapt anchors as depth increases.</li>
               <li><strong>Depth.</strong> Depth is the count of interior trends the main exterior trend has. Higher depth ⇒ higher precision. We track up to <em>9 depths</em> to ensure the visualization of trend continuation.</li>
               <li><strong>Continuation vs reversal.</strong> A line that continues to hold after multiple touches often compresses price into a break. Watch for LTF confluence before the break. Typically reversals happen after 5-6 trend breaks on a given side. We've integrated alerts for trend creation and trend breaking. Once you've established your anchors, the indicator takes care of the rest. </li>
-            </ol>
+            </ul>
             <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
               <source src="vid/ressuptrendloop.mp4" type="video/mp4">
             </video>
@@ -286,6 +288,12 @@
               <li>Use <em>Array Mode</em> to establish high precision trendlines, as those typically show better entry points for a swing.</li>
               <li>Avoid drawing through noisy ranges — promote to fresh anchors when structure shifts.</li>
             </ul>
+             <h3>Plotting Arrayed Resistance / Support Trendlines</h3>
+            <p><strong>Arrayed Trends.</strong> Arrayed trendlines offer a higher precision of current trend accuracy than trendlines created on like-for-like timeframes.</p>
+            <ul>
+              <li><strong>Anchor selection.</strong> Typically, the starting point for an arrayed trendline starts on a HTF with the "to" anchor set on a timeframe a step lower fractally. Example 1W > 1D > 12H > 8H > 4H.</li>
+            </ul>
+          
           </article>
 
           <article class="doc" id="doc-range" style="margin-top:1rem">
