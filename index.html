@@ -249,7 +249,7 @@
     <h2>Recent video summaries</h2>
     <div class="grid suite" id="yt-list"><!-- filled by JS --></div>
     <div style="margin-top:1rem">
-      <a class="btn btn-ghost" href="/summaries.html">See all summaries</a>
+      <a class="btn btn-ghost" href="summaries.html">See all summaries</a>
     </div>
   </div>
 </section>
@@ -310,7 +310,7 @@
               <li><strong>First touch</strong>: high‑quality entries commonly occur on the first return to a fresh origin.</li>
             </ul>
             <video autoplay loop muted playsinline style="width:100%;border-radius:12px">
-              <source src="/breakoriginsloop.mp4" type="video/mp4">
+              <source src="vid/breakoriginsloop.mp4" type="video/mp4">
             </video>
             <p>We store the lifecycle of each break/origin level so you can be alerted for Creation/First-Touch/Origin Creation/Level Broken/Broken-First-Touch.</p>
             <p>Combine LTF origin creation (3m→5m→15m→60m) with HTF context to anticipate reversals before they appear on HTF candles.</p>
@@ -364,8 +364,8 @@
         <span>© <span id="year"></span> syndotc™. All rights reserved.</span>
       </div>
       <nav style="display:flex;gap:1rem;flex-wrap:wrap">
-        <a href="/terms.html" style="color:#a3acba">Terms</a>
-        <a href="/privacy.html" style="color:#a3acba">Privacy</a>
+        <a href="terms.html" style="color:#a3acba">Terms</a>
+        <a href="privacy.html" style="color:#a3acba">Privacy</a>
         <a href="mailto:support@syndotc.com" style="color:#a3acba">Support</a>
       </nav>
     </div>
@@ -425,8 +425,8 @@
   (async function () {
     try {
       // Fetch data from your JSON files
-      const latestRes = await fetch('/latest.json', { cache: 'no-store' });
-      const indexRes  = await fetch('/yt-index.json', { cache: 'no-store' });
+      const latestRes = await fetch('latest.json', { cache: 'no-store' });
+      const indexRes  = await fetch('yt-index.json', { cache: 'no-store' });
       if (!latestRes.ok || !indexRes.ok) throw new Error('JSON fetch failed');
 
       const latest = await latestRes.json();
