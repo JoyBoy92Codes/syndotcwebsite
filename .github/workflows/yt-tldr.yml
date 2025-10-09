@@ -14,6 +14,11 @@ jobs:
         with: { node-version: 20 }
       - name: Install OpenAI SDK
         run: npm i openai@4
+
+      - name: Sanity check YouTube key
+        run: |
+          curl -s "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=@GoogleDevelopers&key=${{ secrets.YT_API_KEY }}" | head -c 500
+
       - name: Run builder
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
