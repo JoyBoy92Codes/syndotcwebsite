@@ -86,7 +86,7 @@ function summaryHtml({ title, datePT, url, videoId, bullets }) {
 <meta property="og:description" content="${metaDesc}">
 <meta property="og:image" content="${og}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="/favicon.ico">
+<link rel="icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6;margin:0}
@@ -97,7 +97,7 @@ function summaryHtml({ title, datePT, url, videoId, bullets }) {
 h1{font-size:2rem;margin:.5rem 0}p.meta{color:#9aa3b2;margin:.25rem 0 1rem}
 ul{color:#cbd2dd}a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.55rem .85rem;color:#fff;text-decoration:none;margin-top:.5rem}</style>
 </head><body><div class="container">
-<a class="btn" href="/summaries.html">← All summaries</a>
+<a class="btn" href="summaries.html">← All summaries</a>
 <article class="card" style="margin-top:1rem">
 <div class="thumb"><iframe src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe></div>
 <h1>${title}</h1>
