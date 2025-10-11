@@ -1,6 +1,16 @@
 {
   "items": [
     {
+      "title": "Crypto Daily Update - | 10/10/2025 - Prime Day Chaos",
+      "datePT": "2025-10-10",
+      "url": "https://www.youtube.com/watch?v=kYAAsQey6rQ",
+      "videoId": "kYAAsQey6rQ",
+      "bullets": [
+        "Transcript unavailable — summary skipped."
+      ],
+      "permalink": "summaries/2025-10-10-crypto-daily-update-10-10-2025-prime-day-chaos.html"
+    },
+    {
       "title": "Crypto Daily Update | 09/10/2025 - Should you be bearish or bullish?",
       "datePT": "2025-10-09",
       "url": "https://www.youtube.com/watch?v=-cQPPnEcsQo",
@@ -89,16 +99,6 @@
         "Transcript unavailable — summary skipped."
       ],
       "permalink": "summaries/2025-10-02-crypto-daily-update-2-10-2025-pump-pump-amp-more-pump.html"
-    },
-    {
-      "title": "Crypto Daily Update | 01/10/2025 - The Squeeze - Now What?",
-      "datePT": "2025-10-01",
-      "url": "https://www.youtube.com/watch?v=99j3aHztqAA",
-      "videoId": "99j3aHztqAA",
-      "bullets": [
-        "Transcript unavailable — summary skipped."
-      ],
-      "permalink": "summaries/2025-10-01-crypto-daily-update-01-10-2025-the-squeeze-now-what.html"
     }
   ]
 }
