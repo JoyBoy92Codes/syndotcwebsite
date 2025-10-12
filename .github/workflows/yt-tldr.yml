@@ -1,34 +1,74 @@
 name: Build YouTube TLDRs
 on:
   schedule:
-    - cron: "0 2 * * *"   # 02:00 UTC ~ 7pm PT (during PDT), ~6pm PT (during PST)
-    - cron: "0 3 * * *"  # ~7pm PT during PST
+    - cron: "0 2 * * *"   # 02:00 UTC ~ 7pm PT (PDT) / 6pm PT (PST)
+    - cron: "0 3 * * *"   # 03:00 UTC ~ 7pm PT (PST)
   workflow_dispatch: {}
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
 
-      - name: Install deps
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ---- Only needed for the Whisper fallback ($0 local STT) ----
+      - name: Install ffmpeg and yt-dlp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg python3-pip
+          python3 -m pip install --upgrade --no-cache-dir yt-dlp
+
+      - name: Download whisper.cpp binary and model
+        run: |
+          mkdir -p tools/bin models
+          # Grab a prebuilt whisper.cpp Linux binary (rename to whisper-cpp)
+          curl -L -o tools/bin/whisper-cpp https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-linux-x64
+          chmod +x tools/bin/whisper-cpp
+          # Base English model (~140MB). You can switch to small.en for better quality.
+          curl -L -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+
+      - name: Install Node deps
         run: npm i openai@4 youtube-transcript
 
-
-      - name: Sanity check YouTube key
+      - name: Sanity check YouTube key (optional if using RSS)
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: |
-          curl -s "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=@GoogleDevelopers&key=${{ secrets.YT_API_KEY }}" | head -c 500
+          curl -s "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=@GoogleDevelopers&key=${YT_API_KEY}" | head -c 500 || true
 
       - name: Run builder
         env:
+          # --- Summarizer mode ---
+          # Set FREE_MODE=1 for $0 end-to-end (rule-based summarizer). Otherwise omit to use OpenAI.
+          # FREE_MODE: "1"
+
+          # --- OpenAI (only used if FREE_MODE is not "1") ---
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+          # --- YouTube source selection ---
+          # If CHANNEL_ID is provided we use free RSS (no YT API). If omitted, we’ll resolve handle and use the API.
           CHANNEL_ID: "UCZYoGap4Hbtzfpz0V3HtkYg"
-          SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"   # <- change to your domain
+          # CHANNEL_HANDLE: "@Syn.Trades"
+          # YT_API_KEY: ${{ secrets.YT_API_KEY }}
+
+          # --- Site/config ---
+          SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"
           SITE_TZ: "America/Los_Angeles"
           MAX_ITEMS: "10"
+
+          # --- Whisper fallback wiring (used when captions are missing) ---
+          YTDLP_BIN: "yt-dlp"
+          WHISPER_BIN: "tools/bin/whisper-cpp"
+          WHISPER_MODEL: "models/ggml-base.en.bin"
         run: node tools/build-yt-tldr.mjs
+
       - name: Commit & push
         run: |
           git config user.name "yt-bot"

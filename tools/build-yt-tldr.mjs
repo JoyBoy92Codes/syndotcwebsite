@@ -1,15 +1,80 @@
 // tools/build-yt-tldr.mjs
+// Full file — includes free/offline STT fallback (whisper.cpp) and free, rule-based summarizer option.
+// If you want $0 end-to-end, set FREE_MODE=1 and install yt-dlp + ffmpeg + whisper.cpp.
+// Otherwise, leave OPENAI_API_KEY set to use AI summaries when available.
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import { execFile } from 'node:child_process';
 import { OpenAI } from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
 
 /* ============================================================
-   TRANSCRIPT HELPERS (lib first, then watch-page fallback)
+   CONFIG / ENV
+   ============================================================ */
+const FREE_MODE       = process.env.FREE_MODE === '1'; // if true, use rule-based summarizer (no API cost)
+const YT_API_KEY      = process.env.YT_API_KEY || '';
+const OPENAI_API_KEY  = process.env.OPENAI_API_KEY || '';
+const CHANNEL_HANDLE  = process.env.CHANNEL_HANDLE || '@Syn.Trades';
+const CHANNEL_ID      = process.env.CHANNEL_ID || ''; // optional: if provided, use RSS (no API)
+const SITE_URL        = (process.env.SITE_URL || '').replace(/\/$/, '');
+const SITE_TZ         = process.env.SITE_TZ || 'America/Los_Angeles';
+const MAX_ITEMS       = Number(process.env.MAX_ITEMS || 10);
+
+// Offline STT fallback config
+const BIN_YTDLP       = process.env.YTDLP_BIN   || 'yt-dlp';
+const BIN_WHISPER     = process.env.WHISPER_BIN || 'whisper-cpp'; // some builds name the binary 'main'
+const WHISPER_MODEL   = process.env.WHISPER_MODEL || 'models/ggml-base.en.bin'; // e.g., 'models/ggml-small.en.bin'
+
+// Summarization model if using OpenAI
+const OPENAI_MODEL    = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+// Output paths
+const ROOT            = process.cwd();
+const OUT_LATEST      = path.join(ROOT, 'latest.json');
+const OUT_INDEX       = path.join(ROOT, 'yt-index.json');
+const SUMMARIES_DIR   = path.join(ROOT, 'summaries');
+const OUT_LASTID      = path.join(ROOT, '.last-video-id');
+
+if (!SITE_URL) {
+  console.error('Missing env: SITE_URL');
+  process.exit(1);
+}
+if (!FREE_MODE && !OPENAI_API_KEY) {
+  console.error('Missing env: OPENAI_API_KEY (or set FREE_MODE=1 for zero-cost summaries)');
+  process.exit(1);
+}
+
+const ai = !FREE_MODE && OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function toPTDate(iso, tz = SITE_TZ) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-CA', { timeZone: tz });
+}
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
+}
+function esc(s = '') {
+  return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+}
+function run(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { windowsHide: true, ...opts }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout);
+    });
+  });
+}
+
+/* ============================================================
+   TRANSCRIPT HELPERS (lib first, then watch-page fallback, then local STT)
    ============================================================ */
 
 // A broad list of English variants we’ll try explicitly with the library.
-// Includes common region codes and the "auto" forms some tracks use.
 const EN_LANGS = [
   'en', 'en-US', 'en-GB', 'en-UK', 'en-CA', 'en-AU', 'en-NZ', 'en-IN', 'en-IE', 'en-SG', 'en-PH', 'en-ZA',
   'a.en', 'auto', 'auto-en'
@@ -37,11 +102,9 @@ function extractCaptionTracks(html) {
   let i = html.indexOf(needle);
   if (i === -1) return null;
   i += needle.length;
-  // skip whitespace
   while (i < html.length && /\s/.test(html[i])) i++;
   if (html[i] !== '[') return null;
 
-  // bracket-count the array
   let depth = 0, j = i;
   while (j < html.length) {
     const ch = html[j];
@@ -55,70 +118,29 @@ function extractCaptionTracks(html) {
 
   const raw = html.slice(i, j);
   const cleaned = raw
-    .replace(/\\u0026/g, '&')  // unescape & in URLs
-    .replace(/\\"/g, '"')      // unescape quotes
-    .replace(/\\n/g, '\n')     // newlines
-    .replace(/\\\//g, '/');    // slashes
+    .replace(/\\u0026/g, '&')
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .replace(/\\\//g, '/');
 
   try { return JSON.parse(cleaned); }
   catch { return null; }
 }
 
-// Parse json3 timedtext payload into plain text
-function parseJson3TimedText(json) {
-  const text = (json?.events || [])
-    .map(ev => (ev.segs || []).map(s => s.utf8).join(''))
-    .join(' ');
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-// Heuristic: pick best English/ASR track
-function pickEnglishTrack(tracks = []) {
-  // Helper checks
-  const isEnglishCode = (code = '') => /^en([\-\_][A-Za-z]+)?$/i.test(code);
-  const isAutoEnglishCode = (code = '') => /^a\.en$/i.test(code) || /auto/i.test(code);
-  const isEnglishName = (name = '') => /english/i.test(String(name));
-
-  // 1) exact languageCode starts with 'en'
-  let t = tracks.find(t => isEnglishCode(t.languageCode));
-  if (t) return t;
-
-  // 2) languageName mentions English
-  t = tracks.find(t => isEnglishName(t.name?.simpleText || t.languageName));
-  if (t) return t;
-
-  // 3) auto/ASR english-like
-  t = tracks.find(t =>
-    isAutoEnglishCode(t.languageCode) ||
-    String(t.kind || '').toLowerCase() === 'asr'
-  );
-  if (t) return t;
-
-  // 4) any track that is translatable to EN
-  t = tracks.find(t => t.isTranslatable && (t.languageCode || '').length);
-  if (t) return t;
-
-  // 5) fallback to first available
-  return tracks[0] || null;
-}
-
 // Watch-page fallback with realistic headers, consent suppression, and dual-format fetch
 async function fetchTranscriptViaWatchPage(videoId) {
   const headers = {
-    'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
     'accept-language': 'en-US,en;q=0.9',
     'cookie': 'CONSENT=YES+1'
   };
 
-  // Balanced-brace extractor for ytInitialPlayerResponse = {...};
   function extractPlayerResponse(html) {
     const key = 'ytInitialPlayerResponse';
     let i = html.indexOf(key);
     if (i === -1) return null;
     i = html.indexOf('=', i);
     if (i === -1) return null;
-    // move to first '{'
     while (i < html.length && html[i] !== '{') i++;
     if (html[i] !== '{') return null;
 
@@ -139,15 +161,11 @@ async function fetchTranscriptViaWatchPage(videoId) {
     const res = await fetch(url, { headers });
     if (!res.ok) return null;
     const html = await res.text();
-
-    // bail if consent/verify page
     if (/www\.youtube\.com\/consent|One more step|verify you are human|acknowledge/i.test(html)) return null;
 
-    // 1) Try full player response (most reliable)
     const pr = extractPlayerResponse(html);
     let tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!Array.isArray(tracks) || !tracks.length) {
-      // 2) Try older inline captions block
       const m = html.match(/"playerCaptionsTracklistRenderer":(\{[\s\S]*?\})\}/);
       if (m) {
         try {
@@ -159,14 +177,12 @@ async function fetchTranscriptViaWatchPage(videoId) {
     return Array.isArray(tracks) && tracks.length ? tracks : null;
   }
 
-  // Try /embed first, then /watch
   const embedUrl = `https://www.youtube.com/embed/${videoId}?hl=en`;
   const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en&has_verified=1&bpctr=9999999999`;
 
   let tracks = await getTracksFrom(embedUrl);
   if (!tracks) tracks = await getTracksFrom(watchUrl);
 
-  // Helper pick
   const isEnglishCode = (c='') => /^en([\-\_][A-Za-z]+)?$/i.test(c);
   const isAutoEnglish = (c='') => /^a\.en$/i.test(c) || /auto/i.test(c);
   const isEnglishName = (s='') => /english/i.test(String(s));
@@ -177,7 +193,6 @@ async function fetchTranscriptViaWatchPage(videoId) {
    || arr.find(t => t.isTranslatable)
    || arr[0];
 
-  // If we found caption tracks via HTML:
   if (tracks && tracks.length) {
     let baseUrl = pickTrack(tracks)?.baseUrl || '';
     if (!baseUrl) return '';
@@ -217,7 +232,6 @@ async function fetchTranscriptViaWatchPage(videoId) {
   }
 
   // Final fallback: direct timedtext endpoints
-  // Try json3 auto-generated EN, then TTML
   for (const fmt of ['json3', 'ttml']) {
     const url = `https://www.youtube.com/api/timedtext?lang=en&v=${encodeURIComponent(videoId)}&fmt=${fmt}`;
     const r = await fetch(url, { headers });
@@ -250,6 +264,33 @@ async function fetchTranscriptViaWatchPage(videoId) {
   return '';
 }
 
+// Offline STT fallback (whisper.cpp) — $0
+async function fetchTranscriptViaWhisper(videoId) {
+  const work = path.join(os.tmpdir(), `yt-${videoId}-${Date.now()}`);
+  await fs.mkdir(work, { recursive: true });
+  const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  const audioPath = path.join(work, `${videoId}.m4a`);
+  try {
+    // 1) download audio (m4a)
+    await run(BIN_YTDLP, ['-x', '--audio-format', 'm4a', '-o', audioPath, url]);
+
+    // 2) transcribe offline
+    // whisper-cpp accepts: -m <model> -f <audio> -otxt -of <outstem>
+    const outStem = path.join(work, videoId);
+    await run(BIN_WHISPER, ['-m', WHISPER_MODEL, '-f', audioPath, '-otxt', '-of', outStem]);
+
+    const txt = await fs.readFile(`${outStem}.txt`, 'utf8');
+    const plain = txt.replace(/\s+/g, ' ').trim();
+    if (plain) console.log('✅ transcript via whisper.cpp for', videoId);
+    return plain.slice(0, 8000);
+  } catch (e) {
+    console.warn('Whisper fallback failed:', e.message || e);
+    return '';
+  } finally {
+    try { await fs.rm(work, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // Unified transcript getter
 async function fetchTranscriptText(videoId) {
   // 1) library (multi-English) first
@@ -260,61 +301,170 @@ async function fetchTranscriptText(videoId) {
   const fromWatch = await fetchTranscriptViaWatchPage(videoId);
   if (fromWatch) return fromWatch.slice(0, 8000);
 
-  // 3) none
+  // 3) offline STT (free, reliable)
+  const fromWhisper = await fetchTranscriptViaWhisper(videoId);
+  if (fromWhisper) return fromWhisper.slice(0, 8000);
+
+  // 4) none
   return '';
 }
 
 /* ============================================================
-   ENV / PATHS
+   YOUTUBE FETCH (API or RSS)
    ============================================================ */
-const YT_API_KEY     = process.env.YT_API_KEY || '';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const CHANNEL_HANDLE = process.env.CHANNEL_HANDLE || '@Syn.Trades';
-const CHANNEL_ID     = process.env.CHANNEL_ID || ''; // use RSS if available
-const SITE_URL       = (process.env.SITE_URL || '').replace(/\/$/, '');
-const SITE_TZ        = process.env.SITE_TZ || 'America/Los_Angeles';
-const MAX_ITEMS      = Number(process.env.MAX_ITEMS || 10);
-
-if (!OPENAI_API_KEY || !SITE_URL) {
-  console.error('Missing env: OPENAI_API_KEY or SITE_URL');
-  process.exit(1);
+async function youtube(endpoint, params) {
+  if (!YT_API_KEY) throw new Error('YT_API_KEY missing (or set CHANNEL_ID to use RSS)');
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
+  url.searchParams.set('key', YT_API_KEY);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
-
-const ai = new OpenAI({ apiKey: OPENAI_API_KEY });
-const ROOT = process.cwd();
-const OUT_LATEST = path.join(ROOT, 'latest.json');
-const OUT_INDEX  = path.join(ROOT, 'yt-index.json');
-const SUMMARIES_DIR = path.join(ROOT, 'summaries');
-const OUT_LASTID = path.join(ROOT, '.last-video-id');
+async function resolveChannelIdFromHandle(handle) {
+  const j = await youtube('search', { part: 'snippet', q: handle, type: 'channel', maxResults: '1' });
+  const item = j.items?.[0];
+  if (!item?.snippet?.channelId) throw new Error('Cannot resolve channel from handle');
+  return item.snippet.channelId;
+}
+async function fetchRecentVideosAPI(channelId, max = 8) {
+  const j = await youtube('search', { part: 'snippet', channelId, order: 'date', maxResults: String(max), type: 'video' });
+  return (j.items || []).map(it => ({
+    videoId: it.id.videoId,
+    title: it.snippet.title,
+    description: it.snippet.description || '',
+    publishedAt: it.snippet.publishedAt,
+    url: `https://youtu.be/${it.id.videoId}`
+  }));
+}
+async function fetchRecentVideosRSS(channelId, max = 8) {
+  const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('RSS fetch failed: ' + res.status);
+  const xml = await res.text();
+  const entries = xml.split('<entry>').slice(1).map(b => '<entry>' + b);
+  const out = [];
+  for (const e of entries.slice(0, max)) {
+    const get = tag => (e.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [, ''])[1].trim();
+    const title = get('title');
+    const idTag = get('yt:videoId');
+    const published = get('published');
+    const link = (e.match(/<link rel="alternate" href="([^"]+)"/) || [, ''])[1];
+    out.push({ videoId: idTag, title, description: '', publishedAt: published, url: link });
+  }
+  return out;
+}
 
 /* ============================================================
-   UTILS
+   SUMMARIZATION
+   - Paid path: OpenAI (if FREE_MODE=0 and OPENAI_API_KEY present)
+   - Free path: rule-based extractive summarizer (no external API)
    ============================================================ */
-function toPTDate(iso, tz = SITE_TZ) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-CA', { timeZone: tz });
+
+// tiny stopword set for heuristics
+const STOP = new Set((
+  'a,an,and,are,as,at,be,by,for,from,has,have,i,in,is,it,of,on,or,that,the,then,there,these,those,to,was,were,will,with,about,into,over,after,before,than,not,so,just,like,you,can,if,we,they,this,our'
+).split(','));
+
+function tokenizeSentences(text) {
+  // naive splitter good enough for transcripts
+  return text
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[\.\!\?])\s+(?=[A-Z0-9"'])|(?:\n|\r)+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
 }
-function slugify(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
+function tokenizeWords(s) {
+  return s.toLowerCase().match(/[a-z0-9%\.]+/g) || [];
 }
-function esc(s = '') {
-  return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+function scoreSentences(sentences) {
+  const tf = new Map();
+  for (const s of sentences) {
+    for (const w of tokenizeWords(s)) {
+      if (STOP.has(w)) continue;
+      tf.set(w, (tf.get(w) || 0) + 1);
+    }
+  }
+  // sentence score: sum of word frequencies + boost for numbers and levels
+  const scores = sentences.map(s => {
+    const words = tokenizeWords(s);
+    let score = 0;
+    for (const w of words) {
+      if (!STOP.has(w)) score += (tf.get(w) || 0);
+      if (/\d/.test(w)) score += 1.5; // boost numeric mentions
+      if (/(\b\d{3,5}\b|\b\d+\.\d+\b)/.test(w)) score += 1.0; // price-ish
+    }
+    // short sentences get a slight boost (conciseness)
+    if (s.length < 140) score *= 1.05;
+    return score;
+  });
+  return scores;
+}
+function topKIndices(scores, k) {
+  return scores
+    .map((sc, i) => ({ sc, i }))
+    .sort((a, b) => b.sc - a.sc)
+    .slice(0, k)
+    .map(o => o.i)
+    .sort((a, b) => a - b); // keep original order
+}
+function extractNumbers(text, limit = 40) {
+  return Array.from(text.matchAll(/\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*[kKmMbB%]?)\b/g))
+    .slice(0, limit)
+    .map(m => m[1]);
 }
 
-/* ============================================================
-   SUMMARIZATION (grounded, number-safe)
-   ============================================================ */
-async function summarizeItem(v) {
-  const transcript = await fetchTranscriptText(v.videoId);
+async function summarizeFree(v, transcript) {
+  const sentences = tokenizeSentences(transcript).slice(0, 400); // cap for speed
+  if (!sentences.length) {
+    return { ...v, bullets: ['Transcript unavailable — summary skipped.'], long: { skipped: true } };
+  }
+  const scores = scoreSentences(sentences);
+  const top3 = topKIndices(scores, 3).map(i => sentences[i]);
 
+  // simple “context” = first or best sentence about topic
+  const contextIdx = topKIndices(scores, Math.min(1, sentences.length))[0] ?? 0;
+  const context = sentences[Math.max(0, contextIdx)];
+
+  // “key levels”: scan for common price patterns like 1234, 123.45, 4,200, 1.234
+  const levelCandidates = Array.from(new Set(
+    (transcript.match(/\b\d{2,5}(?:\.\d+)?\b/g) || []).slice(0, 6)
+  ));
+  const key_levels = levelCandidates.map(p => ({
+    asset: '',
+    level: p,
+    direction: '',
+    notes: ''
+  }));
+
+  // “takeaways”: pick 3 more top sentences
+  const moreIdx = topKIndices(scores, 6).filter(i => !top3.includes(sentences[i]));
+  const takeaways = moreIdx.slice(0, 4).map(i => sentences[i]);
+
+  // evidence: quote top sentence fragments
+  const evidence = top3.slice(0, 2).map((q, i) => ({ quote: q.slice(0, 160), ts: '' }));
+
+  return {
+    ...v,
+    bullets: top3.map(s => s.length > 160 ? s.slice(0, 157) + '…' : s),
+    long: {
+      context,
+      key_levels,
+      setups: [],
+      takeaways,
+      catalysts: [],
+      evidence
+    }
+  };
+}
+
+async function summarizeWithOpenAI(v, transcript) {
   // Strict: skip videos without transcript
   if (!transcript || transcript.trim().length < 200) {
     return { ...v, bullets: ['Transcript unavailable — summary skipped.'], long: { skipped: true } };
   }
 
-  // collect numeric tokens to cross-check
-  const numTokens = Array.from(transcript.matchAll(/\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*[kKmMbB%]?)\b/g))
-    .slice(0, 200).map(m => m[1]);
+  const numTokens = extractNumbers(transcript, 200);
 
   const prompt = `You are a factual trading summarizer.
 You MUST write only what appears in the transcript—never infer or guess.
@@ -338,7 +488,7 @@ ${transcript.slice(0, 6000)}`;
 
   try {
     const res = await ai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: OPENAI_MODEL,
       temperature: 0.1,
       response_format: { type: 'json_object' },
       messages: [
@@ -369,6 +519,17 @@ ${transcript.slice(0, 6000)}`;
   }
 }
 
+async function summarizeItem(v) {
+  const transcript = await fetchTranscriptText(v.videoId);
+  if (FREE_MODE || !ai) {
+    return await summarizeFree(v, transcript);
+  }
+  return await summarizeWithOpenAI(v, transcript);
+}
+
+/* ============================================================
+   HTML RENDER
+   ============================================================ */
 function summaryHtml({ title, datePT, url, videoId, bullets, long }) {
   const metaDesc = (bullets || []).join(' • ').slice(0, 155);
   const og = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
@@ -432,51 +593,6 @@ a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255
 }
 
 /* ============================================================
-   YOUTUBE FETCH (API or RSS)
-   ============================================================ */
-async function youtube(endpoint, params) {
-  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
-  url.searchParams.set('key', YT_API_KEY);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-async function resolveChannelIdFromHandle(handle) {
-  const j = await youtube('search', { part: 'snippet', q: handle, type: 'channel', maxResults: '1' });
-  const item = j.items?.[0];
-  if (!item?.snippet?.channelId) throw new Error('Cannot resolve channel from handle');
-  return item.snippet.channelId;
-}
-async function fetchRecentVideosAPI(channelId, max = 8) {
-  const j = await youtube('search', { part: 'snippet', channelId, order: 'date', maxResults: String(max), type: 'video' });
-  return (j.items || []).map(it => ({
-    videoId: it.id.videoId,
-    title: it.snippet.title,
-    description: it.snippet.description || '',
-    publishedAt: it.snippet.publishedAt,
-    url: `https://youtu.be/${it.id.videoId}`
-  }));
-}
-async function fetchRecentVideosRSS(channelId, max = 8) {
-  const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('RSS fetch failed: ' + res.status);
-  const xml = await res.text();
-  const entries = xml.split('<entry>').slice(1).map(b => '<entry>' + b);
-  const out = [];
-  for (const e of entries.slice(0, max)) {
-    const get = tag => (e.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [,''])[1].trim();
-    const title = get('title');
-    const idTag = get('yt:videoId');
-    const published = get('published');
-    const link = (e.match(/<link rel="alternate" href="([^"]+)"/) || [,''])[1];
-    out.push({ videoId: idTag, title, description: '', publishedAt: published, url: link });
-  }
-  return out;
-}
-
-/* ============================================================
    MAIN
    ============================================================ */
 (async function main() {
@@ -519,5 +635,6 @@ async function fetchRecentVideosRSS(channelId, max = 8) {
   await fs.writeFile(OUT_INDEX,  JSON.stringify({ items: indexItems }, null, 2), 'utf8');
   await fs.writeFile(OUT_LASTID, newestId || '', 'utf8');
 
-  console.log('Wrote latest.json, yt-index.json and', indexItems.length, 'summary pages (via ' + (CHANNEL_ID ? 'RSS' : 'API') + ').');
+  console.log('Wrote latest.json, yt-index.json and', indexItems.length, 'summary pages (via ' + (CHANNEL_ID ? 'RSS' : 'API') + ').',
+              FREE_MODE ? 'Mode: FREE (rule-based summarizer)' : 'Mode: OpenAI summarizer');
 })().catch(err => { console.error(err); process.exit(1); });
