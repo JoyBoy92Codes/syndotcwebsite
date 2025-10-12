@@ -105,26 +105,36 @@ function pickEnglishTrack(tracks = []) {
 // Watch-page fallback with realistic headers, consent suppression, and dual-format fetch
 async function fetchTranscriptViaWatchPage(videoId) {
   try {
-    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en&has_verified=1&bpctr=9999999999`;
+    const embedUrl = `https://www.youtube.com/embed/${videoId}?hl=en`;
     const headers = {
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
       'accept-language': 'en-US,en;q=0.9',
       'cookie': 'CONSENT=YES+1'
     };
 
-    const res = await fetch(watchUrl, { headers });
-    if (!res.ok) throw new Error('watch page fetch failed: ' + res.status);
+    const res = await fetch(embedUrl, { headers });
+    if (!res.ok) throw new Error('embed fetch failed: ' + res.status);
     const html = await res.text();
 
-    // bail if we got a consent/verify page
-    if (/www\.youtube\.com\/consent|One more step|verify you are human|acknowledge/i.test(html)) {
-      console.warn('Got consent/verification page for', videoId);
+    // Find and parse playerCaptionsTracklistRenderer JSON
+    const m = html.match(/"playerCaptionsTracklistRenderer":(\{[\s\S]*?\})\}/);
+    if (!m) {
+      console.warn('No captionTracks in embed page for', videoId);
       return '';
     }
 
-    const tracks = extractCaptionTracks(html);
-    if (!Array.isArray(tracks) || !tracks.length) {
-      console.warn('No captionTracks in watch page for', videoId);
+    let json;
+    try {
+      json = JSON.parse(m[1] + '}');
+    } catch {
+      console.warn('Failed to parse captions JSON for', videoId);
+      return '';
+    }
+
+    const tracks = json.captionTracks || [];
+    if (!tracks.length) {
+      console.warn('No captionTracks array in embed JSON for', videoId);
       return '';
     }
 
@@ -136,34 +146,31 @@ async function fetchTranscriptViaWatchPage(videoId) {
     }
     baseUrl = baseUrl.replace(/\\u0026/g, '&');
 
-    // Try json3 first
+    // JSON3 first
     const jsonUrl = baseUrl.includes('fmt=') ? baseUrl : `${baseUrl}&fmt=json3`;
     let ttRes = await fetch(jsonUrl, { headers });
     if (ttRes.ok) {
-      const ct = ttRes.headers.get('content-type') || '';
       const body = await ttRes.text();
-      if (/json/i.test(ct) || body.trim().startsWith('{')) {
+      if (body.trim().startsWith('{')) {
         try {
-          const json = JSON.parse(body);
-          const text = parseJson3TimedText(json);
+          const data = JSON.parse(body);
+          const text = parseJson3TimedText(data);
           if (text) {
-            console.log('✅ transcript via watch page json3 for', videoId);
+            console.log('✅ transcript via embed json3 for', videoId);
             return text;
           }
-        } catch {
-          // fall through to xml
-        }
+        } catch {}
       }
     }
 
-    // Fallback: TTML (XML)
+    // Fallback TTML
     const xmlUrl = baseUrl.includes('fmt=') ? baseUrl.replace(/fmt=[^&]+/, 'fmt=ttml') : `${baseUrl}&fmt=ttml`;
     ttRes = await fetch(xmlUrl, { headers });
     if (ttRes.ok) {
       const xml = await ttRes.text();
       const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       if (text) {
-        console.log('✅ transcript via watch page XML for', videoId);
+        console.log('✅ transcript via embed XML for', videoId);
         return text;
       }
     }
@@ -171,7 +178,7 @@ async function fetchTranscriptViaWatchPage(videoId) {
     console.warn('Timedtext fetch failed for', videoId);
     return '';
   } catch (e) {
-    console.warn('watch page transcript error for', videoId, e.message || e);
+    console.warn('embed transcript error for', videoId, e.message || e);
     return '';
   }
 }
