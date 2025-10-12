@@ -4,13 +4,22 @@ import { OpenAI } from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
 
 async function fetchTranscriptText(videoId) {
-  try {
-    const parts = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
-    return parts.map(p => p.text).join(' ').replace(/\s+/g, ' ').slice(0, 8000);
-  } catch {
-    return ''; // no transcript available
+  const langs = ['en', 'en-US', 'a.en', 'en-GB', 'auto']; // try multiple possibilities
+  for (const lang of langs) {
+    try {
+      const parts = await YoutubeTranscript.fetchTranscript(videoId, { lang });
+      if (parts?.length) {
+        console.log(`✅ Transcript found (${lang}) for`, videoId);
+        return parts.map(p => p.text).join(' ').replace(/\s+/g, ' ').slice(0, 8000);
+      }
+    } catch (err) {
+      // silently try next
+    }
   }
+  console.warn(`⚠️ No transcript found for ${videoId}`);
+  return '';
 }
+
 
 const YT_API_KEY     = process.env.YT_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
