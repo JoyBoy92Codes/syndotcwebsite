@@ -3,24 +3,139 @@ import path from 'node:path';
 import { OpenAI } from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
 
-async function fetchTranscriptText(videoId) {
-  const langs = ['en', 'en-US', 'a.en', 'en-GB', 'auto']; // try multiple possibilities
+// ---------- Transcript helpers ----------
+
+// Try the library with several likely language codes
+async function fetchTranscriptViaLib(videoId) {
+  const langs = ['en', 'en-US', 'a.en', 'en-GB', 'auto'];
   for (const lang of langs) {
     try {
       const parts = await YoutubeTranscript.fetchTranscript(videoId, { lang });
       if (parts?.length) {
-        console.log(`✅ Transcript found (${lang}) for`, videoId);
-        return parts.map(p => p.text).join(' ').replace(/\s+/g, ' ').slice(0, 8000);
+        console.log(`✅ transcript via lib (${lang}) for`, videoId);
+        return parts.map(p => p.text).join(' ').replace(/\s+/g, ' ');
       }
-    } catch (err) {
-      // silently try next
+    } catch {
+      // try the next language silently
     }
   }
-  console.warn(`⚠️ No transcript found for ${videoId}`);
   return '';
 }
 
+// Extract JSON safely from HTML by a loose, resilient pattern
+function extractJsonArray(html, key) {
+  // e.g. key === "captionTracks"
+  // matches: "captionTracks":[{...}]
+  const re = new RegExp(`"${key}"\\s*:\\s*(\\[[\\s\\S]*?\\])`);
+  const m = html.match(re);
+  if (!m) return null;
+  try {
+    // The JSON is already valid (double quotes), so parse directly
+    return JSON.parse(m[1]);
+  } catch { return null; }
+}
 
+// Parse timedtext json3 format into text
+function parseJson3TimedText(json) {
+  // json.events[].segs[].utf8
+  const text = (json?.events || [])
+    .map(ev => (ev.segs || []).map(s => s.utf8).join(''))
+    .join(' ');
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// Fallback: fetch the watch page, read captionTracks.baseUrl, then fetch timedtext
+async function fetchTranscriptViaWatchPage(videoId) {
+  try {
+    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en`;
+    const res = await fetch(watchUrl);
+    if (!res.ok) throw new Error('watch page fetch failed: ' + res.status);
+    const html = await res.text();
+
+    const tracks = extractJsonArray(html, 'captionTracks');
+    if (!Array.isArray(tracks) || !tracks.length) {
+      console.warn('No captionTracks in watch page for', videoId);
+      return '';
+    }
+
+    // Prefer English-ish, then auto (kind=asr), else first
+    const pick = (arr) => {
+      const byLang = arr.find(t => /^(en|en-US|en-GB|a\.en)$/i.test(t.languageCode || ''));
+      if (byLang) return byLang;
+      const asr = arr.find(t => String(t.kind).toLowerCase() === 'asr');
+      if (asr) return asr;
+      return arr[0];
+    };
+
+    const track = pick(tracks);
+    const baseUrl = track?.baseUrl;
+    if (!baseUrl) {
+      console.warn('No baseUrl on caption track for', videoId);
+      return '';
+    }
+
+    // Try JSON3 first for easy parsing; if that fails, try XML/plain
+    const jsonUrl = baseUrl.includes('fmt=')
+      ? baseUrl
+      : `${baseUrl}&fmt=json3`;
+
+    let ttRes = await fetch(jsonUrl);
+    if (ttRes.ok) {
+      const ct = ttRes.headers.get('content-type') || '';
+      const body = await ttRes.text();
+      if (/json/i.test(ct) || body.trim().startsWith('{')) {
+        try {
+          const json = JSON.parse(body);
+          const text = parseJson3TimedText(json);
+          if (text) {
+            console.log('✅ transcript via watch page json3 for', videoId);
+            return text;
+          }
+        } catch { /* fall through to xml attempt */ }
+      }
+    }
+
+    // Fallback: try XML track
+    const xmlUrl = baseUrl.includes('fmt=')
+      ? baseUrl.replace(/fmt=[^&]+/, 'fmt=ttml')
+      : `${baseUrl}&fmt=ttml`;
+    ttRes = await fetch(xmlUrl);
+    if (ttRes.ok) {
+      const xml = await ttRes.text();
+      // crude strip of tags; TTML has <p>text</p> etc.
+      const text = xml
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) {
+        console.log('✅ transcript via watch page XML for', videoId);
+        return text;
+      }
+    }
+
+    console.warn('Timedtext fetch failed for', videoId);
+    return '';
+  } catch (e) {
+    console.warn('watch page transcript error for', videoId, e.message || e);
+    return '';
+  }
+}
+
+// Unified transcript getter with fallbacks
+async function fetchTranscriptText(videoId) {
+  // 1) library + multi-lang
+  const fromLib = await fetchTranscriptViaLib(videoId);
+  if (fromLib) return fromLib.slice(0, 8000);
+
+  // 2) watch page → captionTracks.baseUrl → timedtext
+  const fromWatch = await fetchTranscriptViaWatchPage(videoId);
+  if (fromWatch) return fromWatch.slice(0, 8000);
+
+  // 3) nothing
+  return '';
+}
+
+// ---------- Config / env ----------
 const YT_API_KEY     = process.env.YT_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const CHANNEL_HANDLE = process.env.CHANNEL_HANDLE || '@Syn.Trades';
@@ -41,6 +156,7 @@ const OUT_INDEX  = path.join(ROOT, 'yt-index.json');
 const SUMMARIES_DIR = path.join(ROOT, 'summaries');
 const OUT_LASTID = path.join(ROOT, '.last-video-id');
 
+// ---------- Utils ----------
 function toPTDate(iso, tz = SITE_TZ) {
   const d = new Date(iso);
   return d.toLocaleDateString('en-CA', { timeZone: tz });
@@ -52,6 +168,7 @@ function esc(s = '') {
   return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 }
 
+// ---------- Summarization ----------
 async function summarizeItem(v) {
   const transcript = await fetchTranscriptText(v.videoId);
 
@@ -179,7 +296,7 @@ a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255
 </article></div></body></html>`;
 }
 
-// --- YouTube helpers ---
+// ---------- YouTube fetch ----------
 async function youtube(endpoint, params) {
   const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
   url.searchParams.set('key', YT_API_KEY);
@@ -205,7 +322,7 @@ async function fetchRecentVideosAPI(channelId, max = 8) {
   }));
 }
 
-// --- RSS ---
+// ---------- RSS (no API key) ----------
 async function fetchRecentVideosRSS(channelId, max = 8) {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
   const res = await fetch(url);
@@ -224,7 +341,7 @@ async function fetchRecentVideosRSS(channelId, max = 8) {
   return out;
 }
 
-// --- main ---
+// ---------- main ----------
 (async function main() {
   // check last ID to skip duplicates
   let lastId = '';
