@@ -104,83 +104,150 @@ function pickEnglishTrack(tracks = []) {
 
 // Watch-page fallback with realistic headers, consent suppression, and dual-format fetch
 async function fetchTranscriptViaWatchPage(videoId) {
-  try {
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?hl=en`;
-    const headers = {
-      'user-agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-      'accept-language': 'en-US,en;q=0.9',
-      'cookie': 'CONSENT=YES+1'
-    };
+  const headers = {
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'accept-language': 'en-US,en;q=0.9',
+    'cookie': 'CONSENT=YES+1'
+  };
 
-    const res = await fetch(embedUrl, { headers });
-    if (!res.ok) throw new Error('embed fetch failed: ' + res.status);
+  // Balanced-brace extractor for ytInitialPlayerResponse = {...};
+  function extractPlayerResponse(html) {
+    const key = 'ytInitialPlayerResponse';
+    let i = html.indexOf(key);
+    if (i === -1) return null;
+    i = html.indexOf('=', i);
+    if (i === -1) return null;
+    // move to first '{'
+    while (i < html.length && html[i] !== '{') i++;
+    if (html[i] !== '{') return null;
+
+    let depth = 0, j = i;
+    while (j < html.length) {
+      const ch = html[j++];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    const raw = html.slice(i, j);
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  async function getTracksFrom(url) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
     const html = await res.text();
 
-    // Find and parse playerCaptionsTracklistRenderer JSON
-    const m = html.match(/"playerCaptionsTracklistRenderer":(\{[\s\S]*?\})\}/);
-    if (!m) {
-      console.warn('No captionTracks in embed page for', videoId);
-      return '';
-    }
+    // bail if consent/verify page
+    if (/www\.youtube\.com\/consent|One more step|verify you are human|acknowledge/i.test(html)) return null;
 
-    let json;
-    try {
-      json = JSON.parse(m[1] + '}');
-    } catch {
-      console.warn('Failed to parse captions JSON for', videoId);
-      return '';
+    // 1) Try full player response (most reliable)
+    const pr = extractPlayerResponse(html);
+    let tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!Array.isArray(tracks) || !tracks.length) {
+      // 2) Try older inline captions block
+      const m = html.match(/"playerCaptionsTracklistRenderer":(\{[\s\S]*?\})\}/);
+      if (m) {
+        try {
+          const j = JSON.parse(m[1] + '}');
+          tracks = j.captionTracks;
+        } catch {}
+      }
     }
+    return Array.isArray(tracks) && tracks.length ? tracks : null;
+  }
 
-    const tracks = json.captionTracks || [];
-    if (!tracks.length) {
-      console.warn('No captionTracks array in embed JSON for', videoId);
-      return '';
-    }
+  // Try /embed first, then /watch
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?hl=en`;
+  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en&has_verified=1&bpctr=9999999999`;
 
-    const track = pickEnglishTrack(tracks);
-    let baseUrl = track?.baseUrl || '';
-    if (!baseUrl) {
-      console.warn('No baseUrl on caption track for', videoId);
-      return '';
-    }
+  let tracks = await getTracksFrom(embedUrl);
+  if (!tracks) tracks = await getTracksFrom(watchUrl);
+
+  // Helper pick
+  const isEnglishCode = (c='') => /^en([\-\_][A-Za-z]+)?$/i.test(c);
+  const isAutoEnglish = (c='') => /^a\.en$/i.test(c) || /auto/i.test(c);
+  const isEnglishName = (s='') => /english/i.test(String(s));
+  const pickTrack = (arr=[]) =>
+      arr.find(t => isEnglishCode(t.languageCode))
+   || arr.find(t => isEnglishName(t.name?.simpleText || t.languageName))
+   || arr.find(t => isAutoEnglish(t.languageCode) || String(t.kind||'').toLowerCase()==='asr')
+   || arr.find(t => t.isTranslatable)
+   || arr[0];
+
+  // If we found caption tracks via HTML:
+  if (tracks && tracks.length) {
+    let baseUrl = pickTrack(tracks)?.baseUrl || '';
+    if (!baseUrl) return '';
+
     baseUrl = baseUrl.replace(/\\u0026/g, '&');
 
-    // JSON3 first
+    // Try json3, then TTML
     const jsonUrl = baseUrl.includes('fmt=') ? baseUrl : `${baseUrl}&fmt=json3`;
-    let ttRes = await fetch(jsonUrl, { headers });
-    if (ttRes.ok) {
-      const body = await ttRes.text();
+    let r = await fetch(jsonUrl, { headers });
+    if (r.ok) {
+      const body = await r.text();
       if (body.trim().startsWith('{')) {
         try {
           const data = JSON.parse(body);
-          const text = parseJson3TimedText(data);
+          const text = (data.events || [])
+            .map(ev => (ev.segs || []).map(s => s.utf8).join(''))
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
           if (text) {
-            console.log('✅ transcript via embed json3 for', videoId);
+            console.log('✅ transcript via embed/watch json3 for', videoId);
             return text;
           }
         } catch {}
       }
     }
-
-    // Fallback TTML
     const xmlUrl = baseUrl.includes('fmt=') ? baseUrl.replace(/fmt=[^&]+/, 'fmt=ttml') : `${baseUrl}&fmt=ttml`;
-    ttRes = await fetch(xmlUrl, { headers });
-    if (ttRes.ok) {
-      const xml = await ttRes.text();
+    r = await fetch(xmlUrl, { headers });
+    if (r.ok) {
+      const xml = await r.text();
       const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       if (text) {
-        console.log('✅ transcript via embed XML for', videoId);
+        console.log('✅ transcript via embed/watch XML for', videoId);
         return text;
       }
     }
-
-    console.warn('Timedtext fetch failed for', videoId);
-    return '';
-  } catch (e) {
-    console.warn('embed transcript error for', videoId, e.message || e);
-    return '';
   }
+
+  // Final fallback: direct timedtext endpoints
+  // Try json3 auto-generated EN, then TTML
+  for (const fmt of ['json3', 'ttml']) {
+    const url = `https://www.youtube.com/api/timedtext?lang=en&v=${encodeURIComponent(videoId)}&fmt=${fmt}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) continue;
+    const body = await r.text();
+
+    if (fmt === 'json3' && body.trim().startsWith('{')) {
+      try {
+        const data = JSON.parse(body);
+        const text = (data.events || [])
+          .map(ev => (ev.segs || []).map(s => s.utf8).join(''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (text) {
+          console.log('✅ transcript via timedtext json3 for', videoId);
+          return text;
+        }
+      } catch {}
+    } else if (fmt === 'ttml') {
+      const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (text) {
+        console.log('✅ transcript via timedtext ttml for', videoId);
+        return text;
+      }
+    }
+  }
+
+  console.warn('No captionTracks in embed/watch/timedtext for', videoId);
+  return '';
 }
 
 // Unified transcript getter
