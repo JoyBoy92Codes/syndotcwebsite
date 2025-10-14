@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "googleapis": "^162.0.0",
+    "open": "^10.2.0"
+  }
+}

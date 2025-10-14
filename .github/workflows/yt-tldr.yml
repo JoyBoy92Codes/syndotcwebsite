@@ -1,8 +1,8 @@
 name: Build YouTube TLDRs
 on:
   schedule:
-    - cron: "0 2 * * *"   # 02:00 UTC ~ 7pm PT (PDT) / 6pm PT (PST)
-    - cron: "0 3 * * *"   # 03:00 UTC ~ 7pm PT (PST)
+    - cron: "0 2 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 20
 
-      # ---- Only needed for the Whisper fallback ($0 local STT) ----
+      # (Optional) Whisper fallback – keep if you still want offline STT when captions truly don't exist
       - name: Install ffmpeg and yt-dlp
         run: |
           sudo apt-get update
@@ -28,14 +28,13 @@ jobs:
       - name: Download whisper.cpp binary and model
         run: |
           mkdir -p tools/bin models
-          # Grab a prebuilt whisper.cpp Linux binary (rename to whisper-cpp)
           curl -L -o tools/bin/whisper-cpp https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-linux-x64
           chmod +x tools/bin/whisper-cpp
-          # Base English model (~140MB). You can switch to small.en for better quality.
           curl -L -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 
       - name: Install Node deps
-        run: npm i openai@4 youtube-transcript
+        run: |
+          npm i openai@4 youtube-transcript googleapis
 
       - name: Sanity check YouTube key (optional if using RSS)
         env:
@@ -45,25 +44,24 @@ jobs:
 
       - name: Run builder
         env:
-          # --- Summarizer mode ---
-          # Set FREE_MODE=1 for $0 end-to-end (rule-based summarizer). Otherwise omit to use OpenAI.
-          # FREE_MODE: "1"
-
-          # --- OpenAI (only used if FREE_MODE is not "1") ---
+          # --- OpenAI summarizer (omit if FREE_MODE=1) ---
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-          # --- YouTube source selection ---
-          # If CHANNEL_ID is provided we use free RSS (no YT API). If omitted, we’ll resolve handle and use the API.
+          # --- Channel discovery ---
           CHANNEL_ID: "UCZYoGap4Hbtzfpz0V3HtkYg"
-          # CHANNEL_HANDLE: "@Syn.Trades"
-          # YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          # YT_API_KEY: ${{ secrets.YT_API_KEY }}   # optional; not required for captions
 
           # --- Site/config ---
-          SITE_URL: "https://barnardwben.github.io/syndotcwebsite/"
+          SITE_URL: "https://JoyBoy92Codes.github.io/syndotcwebsite/"
           SITE_TZ: "America/Los_Angeles"
           MAX_ITEMS: "10"
 
-          # --- Whisper fallback wiring (used when captions are missing) ---
+          # --- OAuth for official captions (REQUIRED for reliable captions) ---
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+
+          # --- Whisper fallback wiring (optional) ---
           YTDLP_BIN: "yt-dlp"
           WHISPER_BIN: "tools/bin/whisper-cpp"
           WHISPER_MODEL: "models/ggml-base.en.bin"
