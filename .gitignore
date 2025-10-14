@@ -33,11 +33,7 @@ Thumbs.db
 *.log
 *.tmp
 
-# Generated site data
-latest.json
-yt-index.json
-summaries/
-summaries.html
+
 
 # Video/audio downloads (Whisper fallback)
 *.m4a
