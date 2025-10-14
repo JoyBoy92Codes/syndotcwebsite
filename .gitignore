@@ -1,0 +1,49 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# Build and cache files
+dist/
+build/
+.tmp/
+.cache/
+models/
+tools/bin/
+
+# Environment and secrets
+.env
+.env.*
+.yarnrc*
+.npmrc
+.yt-oauth.json
+*.pem
+*.key
+
+# OS and editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# GitHub Actions artifacts
+*.log
+*.tmp
+
+# Generated site data
+latest.json
+yt-index.json
+summaries/
+summaries.html
+
+# Video/audio downloads (Whisper fallback)
+*.m4a
+*.wav
+vid/
+
+# Misc
+*.bak
+*.old
