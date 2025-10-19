@@ -1,6 +1,18 @@
 {
   "items": [
     {
+      "title": "Crypto Daily Update | 18/10/2025 - Key Levels for Today &amp; Weekly Close",
+      "datePT": "2025-10-18",
+      "url": "https://www.youtube.com/watch?v=CjgCwsycEdA",
+      "videoId": "CjgCwsycEdA",
+      "bullets": [
+        "BTC could bounce above xxxxxx or fall below xxx.",
+        "Soul BTC is targeting levels of xxx, xxx, xxx, and xxx.",
+        "Key level to watch is xxxxxx for potential upward movement."
+      ],
+      "permalink": "summaries/2025-10-18-crypto-daily-update-18-10-2025-key-levels-for-today-amp-weekly-close.html"
+    },
+    {
       "title": "Crypto Daily Update | 17/10/2025 - Is this fake? Big dump coming? SOL &amp; BTC telling different Story",
       "datePT": "2025-10-17",
       "url": "https://www.youtube.com/watch?v=m_RgvFtoNsw",
@@ -8,7 +20,7 @@
       "bullets": [
         "BTC is at critical levels, with potential for a significant move.",
         "Soul has found high time frame support but is influenced by BTC's performance.",
-        "Key levels to watch include xxxxx and xxxxx."
+        "Key levels to watch are xxxxx and xxxxx for BTC."
       ],
       "permalink": "summaries/2025-10-17-crypto-daily-update-17-10-2025-is-this-fake-big-dump-coming-sol-amp-btc-telling-.html"
     },
@@ -19,8 +31,8 @@
       "videoId": "E_MBCJqwKWQ",
       "bullets": [
         "Liquidity is stacked to the upside, but structural moves are pushing prices down.",
-        "Expect a bounce, but not necessarily today; targets around xxx for Soul.",
-        "BTC remains in a downtrend, with key levels around xxxxx."
+        "Expect a bounce, but not necessarily today; targets around xxx for Soul and xxx-xxx for BTC.",
+        "Key levels to watch include xxxxx for BTC and xx.xx for safety assets."
       ],
       "permalink": "summaries/2025-10-16-crypto-daily-update-16-10-2025-looking-bearish.html"
     },
@@ -30,9 +42,9 @@
       "url": "https://www.youtube.com/watch?v=FhTgDuogAIM",
       "videoId": "FhTgDuogAIM",
       "bullets": [
-        "Soul has potential upside to xxx, with downside support at xxx-xxx.",
-        "BTC may revisit xxx, with resistance at xxx.",
-        "Market compression suggests possible breakout in either direction."
+        "Soul has potential upside to xxx, but downside risks to xxx exist.",
+        "BTC may revisit xxx, with upside targets around xxx.",
+        "Market compression suggests possible breakout direction is uncertain."
       ],
       "permalink": "summaries/2025-10-15-crypto-daily-update-15-10-2025-even-i-m-confused.html"
     },
@@ -42,8 +54,8 @@
       "url": "https://www.youtube.com/shorts/ZMpMvlQG7zE",
       "videoId": "ZMpMvlQG7zE",
       "bullets": [
-        "Price may target the xxx level after bouncing off a trend.",
-        "Stop loss can be placed under break levels for trade execution."
+        "Targeting the xxx level after a potential bounce off the trend.",
+        "Stop loss can be placed under break levels."
       ],
       "permalink": "summaries/2025-10-15-watch-for-this-2d-btc-candle-120k-soon-crypto-trading-bitcoin-tradingstrategy-in.html"
     },
@@ -53,9 +65,9 @@
       "url": "https://www.youtube.com/watch?v=cUuc0o0h65o",
       "videoId": "cUuc0o0h65o",
       "bullets": [
-        "Current market volatility is driven by bots closing positions.",
-        "Soul and BTC are at an even playing field with potential for movement in either direction.",
-        "Key levels for Soul are around xxx-xxx and xxxs; BTC's critical level is xxxxxx."
+        "Current market volatility is influenced by bots closing positions.",
+        "Soul and BTC show an even playing field with potential for movement in either direction.",
+        "Key levels for Soul are around xxx-xxx for upside and xxxs for downside."
       ],
       "permalink": "summaries/2025-10-14-crypto-daily-update-14-10-2025-can-you-trust-this-bounce-yet.html"
     },
@@ -89,9 +101,9 @@
       "url": "https://www.youtube.com/watch?v=YRnpJZzvpm0",
       "videoId": "YRnpJZzvpm0",
       "bullets": [
-        "Bitcoin's key level is xxx; failure to break above may indicate a bear market.",
-        "High time frame support exists around xxxx, with a monthly range from xxx to xxx.",
-        "Liquidity remains a concern, with potential resistance at xxx.x."
+        "Bitcoin's key level is xxx; failure to break above could indicate a bear market.",
+        "Monthly range for Bitcoin is xxx to xxx; support exists around xxxx.",
+        "High time frame closes are crucial for future price direction."
       ],
       "permalink": "summaries/2025-10-11-crypto-daily-update-11-10-2025-could-we-really-pump-from-here-tsla-ada-by-reques.html"
     },
@@ -101,23 +113,11 @@
       "url": "https://www.youtube.com/watch?v=M5DyH6pJRzc",
       "videoId": "M5DyH6pJRzc",
       "bullets": [
-        "Crypto has seen significant downturns, impacting long holders.",
+        "Crypto has seen significant downturns, affecting long holders.",
         "Investors should analyze trends before buying tokens.",
         "Basic technical analysis can help avoid losses."
       ],
       "permalink": "summaries/2025-10-10-basic-ta-atom-general-ta-advice-for-spot-holders.html"
-    },
-    {
-      "title": "Crypto Daily Update - | 10/10/2025 - Prime Day Chaos",
-      "datePT": "2025-10-10",
-      "url": "https://www.youtube.com/watch?v=kYAAsQey6rQ",
-      "videoId": "kYAAsQey6rQ",
-      "bullets": [
-        "BTC dropped to xxxs, hitting key levels and showing potential for a bounce.",
-        "Soul reached xxx, clearing liquidity but remains at risk of further downside.",
-        "Key levels for BTC are xxx and xxx; recovery depends on closing above these."
-      ],
-      "permalink": "summaries/2025-10-10-crypto-daily-update-10-10-2025-prime-day-chaos.html"
     }
   ]
 }
