@@ -48,7 +48,7 @@ jobs:
         env:
           # --- Summarizer (omit OPENAI_API_KEY if you prefer FREE_MODE=1) ---
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          FREE_MODE: "0"                         # set to "1" to use rule-based, $0 summaries
+          FREE_MODE: "0"                         # set to "1" for rule-based, $0 summaries
 
           # --- Channel (either HANDLE or CHANNEL_ID is fine) ---
           CHANNEL_HANDLE: "@Syn.Trades"
@@ -64,10 +64,12 @@ jobs:
           # Fallback only: used if playlists fail and we revert to "recent videos"
           MAX_ITEMS: "10"
 
-          # Playlists/Shorts caps (raise if you want more)
+          # Playlists caps (raise if you want more)
           MAX_PER_PLAYLIST: "100"
-          INCLUDE_SHORTS: "1"
-          SHORTS_MAX: "100"
+
+          # NEW: pacing & per-run cap to avoid quota spikes
+          MAX_SUMMARIES_PER_RUN: "40"            # summarize at most this many per run
+          FETCH_SLEEP_MS: "250"                  # small pause between caption fetches
 
           # Optional sanity filter for price-like levels inside summaries
           ALLOW_PRICE_LOOKUPS: "0"
