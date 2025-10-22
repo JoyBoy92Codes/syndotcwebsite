@@ -15,7 +15,7 @@ import { google } from 'googleapis';
 /* ============================================================
    CONFIG / ENV
    ============================================================ */
-const FREE_MODE            = process.env.FREE_MODE === '1'; // if true, use rule-based summarizer (no API cost)
+const FREE_MODE            = process.env.FREE_MODE === '0'; // if true, use rule-based summarizer (no API cost)
 const YT_API_KEY           = process.env.YT_API_KEY || '';
 const OPENAI_API_KEY       = process.env.OPENAI_API_KEY || '';
 const CHANNEL_HANDLE       = process.env.CHANNEL_HANDLE || '@Syn.Trades';
@@ -23,10 +23,10 @@ const CHANNEL_ID           = process.env.CHANNEL_ID || ''; // optional: if provi
 const SITE_URL             = (process.env.SITE_URL || '').replace(/\/$/, '');
 const SITE_TZ              = process.env.SITE_TZ || 'America/Los_Angeles';
 const MAX_ITEMS            = Number(process.env.MAX_ITEMS || 15);  // fallback recent videos cap
-const MAX_PER_PLAYLIST     = Number(process.env.MAX_PER_PLAYLIST || 25); // cap per playlist fetch
-const MAX_SUMMARIES_PER_RUN= Number(process.env.MAX_SUMMARIES_PER_RUN || 40); // NEW: cap new summaries per run
+const MAX_PER_PLAYLIST     = Number(process.env.MAX_PER_PLAYLIST || 5); // cap per playlist fetch
+const MAX_SUMMARIES_PER_RUN= Number(process.env.MAX_SUMMARIES_PER_RUN || 5); // NEW: cap new summaries per run
 const INCLUDE_SHORTS       = process.env.INCLUDE_SHORTS === '1';
-const SHORTS_MAX           = Number(process.env.SHORTS_MAX || 50);
+const SHORTS_MAX           = Number(process.env.SHORTS_MAX || 5);
 
 // OAuth env for official captions
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || '';
