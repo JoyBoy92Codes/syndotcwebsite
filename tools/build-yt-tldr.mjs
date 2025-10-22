@@ -14,14 +14,15 @@ import { google } from 'googleapis';
 /* ============================================================
    CONFIG / ENV
    ============================================================ */
-const FREE_MODE       = process.env.FREE_MODE === '1'; // if true, use rule-based summarizer (no API cost)
-const YT_API_KEY      = process.env.YT_API_KEY || '';
-const OPENAI_API_KEY  = process.env.OPENAI_API_KEY || '';
-const CHANNEL_HANDLE  = process.env.CHANNEL_HANDLE || '@Syn.Trades';
-const CHANNEL_ID      = process.env.CHANNEL_ID || ''; // optional: if provided, use RSS (no API)
-const SITE_URL        = (process.env.SITE_URL || '').replace(/\/$/, '');
-const SITE_TZ         = process.env.SITE_TZ || 'America/Los_Angeles';
-const MAX_ITEMS       = Number(process.env.MAX_ITEMS || 15);
+const FREE_MODE         = process.env.FREE_MODE === '1'; // if true, use rule-based summarizer (no API cost)
+const YT_API_KEY        = process.env.YT_API_KEY || '';
+const OPENAI_API_KEY    = process.env.OPENAI_API_KEY || '';
+const CHANNEL_HANDLE    = process.env.CHANNEL_HANDLE || '@Syn.Trades';
+const CHANNEL_ID        = process.env.CHANNEL_ID || ''; // optional: if provided, use RSS (no API for videos list)
+const SITE_URL          = (process.env.SITE_URL || '').replace(/\/$/, '');
+const SITE_TZ           = process.env.SITE_TZ || 'America/Los_Angeles';
+const MAX_ITEMS         = Number(process.env.MAX_ITEMS || 15); // global cap for recent videos fallback
+const MAX_PER_PLAYLIST  = Number(process.env.MAX_PER_PLAYLIST || 25); // cap per playlist when fetching via API
 
 // OAuth env for official captions
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || '';
@@ -29,19 +30,23 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN || '';
 
 // Offline STT fallback config
-const BIN_YTDLP         = process.env.YTDLP_BIN   || 'yt-dlp';
-const BIN_WHISPER       = process.env.WHISPER_BIN || 'whisper-cpp'; // some builds name the binary 'main'
-const WHISPER_MODEL_PATH= process.env.WHISPER_MODEL || 'models/ggml-base.en.bin'; // e.g., 'models/ggml-small.en.bin'
+const BIN_YTDLP           = process.env.YTDLP_BIN   || 'yt-dlp';
+const BIN_WHISPER         = process.env.WHISPER_BIN || 'whisper-cpp'; // some builds name the binary 'main'
+const WHISPER_MODEL_PATH  = process.env.WHISPER_MODEL || 'models/ggml-base.en.bin'; // e.g., 'models/ggml-small.en.bin'
 
 // Summarization model if using OpenAI
-const OPENAI_MODEL    = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const OPENAI_MODEL      = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+// Optional live price plausibility check
+const ALLOW_PRICE_LOOKUPS = process.env.ALLOW_PRICE_LOOKUPS === '1';
 
 // Output paths
-const ROOT            = process.cwd();
-const OUT_LATEST      = path.join(ROOT, 'latest.json');
-const OUT_INDEX       = path.join(ROOT, 'yt-index.json');
-const SUMMARIES_DIR   = path.join(ROOT, 'summaries');
-const OUT_LASTID      = path.join(ROOT, '.last-video-id');
+const ROOT              = process.cwd();
+const OUT_LATEST        = path.join(ROOT, 'latest.json');
+const OUT_INDEX         = path.join(ROOT, 'yt-index.json');    // now grouped by playlist sections when using API
+const SUMMARIES_DIR     = path.join(ROOT, 'summaries');
+const OUT_LASTID        = path.join(ROOT, '.last-video-id');
+const OUT_CONTENT_PAGE  = path.join(ROOT, 'summaries.html');   // grouped content page with tabs
 
 if (!SITE_URL) {
   console.error('Missing env: SITE_URL');
@@ -53,6 +58,70 @@ if (!FREE_MODE && !OPENAI_API_KEY) {
 }
 
 const ai = !FREE_MODE && OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+/* ============================================================
+   DOMAIN GUARDS — TICKERS / TYPO NORMALIZATION
+   ============================================================ */
+const TICKER_WHITELIST = new Set([
+  'BTC','ETH','SOL','XRP','ADA','DOGE','AVAX','LINK','SUI','SEI','APT','ARB','OP','BONK','WIF',
+  'SPY','QQQ','DXY','VIX','USD'
+]);
+
+// Common ASR confusions → canonical tickers (lowercased compare)
+const ASR_FIX_MAP = [
+  { re: /\bs\s*o\s*l\b/gi, rep: 'SOL' },          // S O L → SOL
+  { re: /\bs-?o-?l\b/gi, rep: 'SOL' },            // S-O-L → SOL
+  { re: /\bsoul\b/gi, rep: 'SOL' },               // soul → SOL
+  { re: /\bsole\b/gi, rep: 'SOL' },               // sole → SOL
+  { re: /\bsold\b/gi, rep: 'SOL' },               // sold → SOL (rare, but ASR does it)
+  { re: /\beeth\b/gi, rep: 'ETH' },               // eeth → ETH
+  { re: /\bethh\b/gi, rep: 'ETH' },
+  { re: /\bbtc\b/gi, rep: 'BTC' },                // force casing
+  { re: /\beth\b/gi, rep: 'ETH' },
+  { re: /\bxrp\b/gi, rep: 'XRP' },
+  { re: /\bavax\b/gi, rep: 'AVAX' },
+  { re: /\blink\b/gi, rep: 'LINK' },
+  { re: /\busd\b/gi, rep: 'USD' },
+  { re: /\bdxy\b/gi, rep: 'DXY' },
+  { re: /\bvix\b/gi, rep: 'VIX' },
+  { re: /\bq ?q ?q\b/gi, rep: 'QQQ' },
+  { re: /\bs ?p ?y\b/gi, rep: 'SPY' }
+];
+
+function normalizeTextBasic(s='') {
+  return String(s)
+    .normalize('NFKC')                      // canonical unicode
+    .replace(/\u200B|\u200C|\u200D/g, '')   // zero-width
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collapseSpacedCaps(s='') {
+  // "S O L", "Q Q Q", "D X Y" → SOL/QQQ/DXY (2–5 letters)
+  return s.replace(/\b([A-Za-z])(?:\s+[A-Za-z]){1,4}\b/g, m => m.replace(/\s+/g, '').toUpperCase());
+}
+
+function fixASRTickers(s='') {
+  let out = s;
+  for (const { re, rep } of ASR_FIX_MAP) out = out.replace(re, rep);
+  return out;
+}
+
+function protectTickersWhitelist(s='') {
+  // Uppercase any all-caps word 2–5 chars that is in whitelist; leave others as-is
+  return s.replace(/\b([A-Z]{2,5})\b/g, (m, g1) => TICKER_WHITELIST.has(g1) ? g1 : m);
+}
+
+// Apply all text guards
+function normalizeForFinance(s='') {
+  let t = normalizeTextBasic(s);
+  t = collapseSpacedCaps(t);
+  t = fixASRTickers(t);
+  t = protectTickersWhitelist(t);
+  return t;
+}
 
 /* ============================================================
    UTILS
@@ -340,36 +409,31 @@ async function fetchTranscriptViaWhisper(videoId) {
   }
 }
 
-// Unified transcript getter
+// Unified transcript getter (NOW with finance normalization)
 async function fetchTranscriptText(videoId) {
-  // 0) Official API (OAuth) — most reliable now that you’re Editor
   const fromApi = await fetchTranscriptViaYouTubeAPI(videoId);
-  if (fromApi) return fromApi;
+  if (fromApi) return normalizeForFinance(fromApi).slice(0, 8000);
 
-  // 1) Library (public)
   const fromLib = await fetchTranscriptViaLib(videoId);
-  if (fromLib) return fromLib.slice(0, 8000);
+  if (fromLib) return normalizeForFinance(fromLib).slice(0, 8000);
 
-  // 2) Watch/embed/timedtext scrape
   const fromWatch = await fetchTranscriptViaWatchPage(videoId);
-  if (fromWatch) return fromWatch.slice(0, 8000);
+  if (fromWatch) return normalizeForFinance(fromWatch).slice(0, 8000);
 
-  // 3) Offline STT (yt-dlp + whisper.cpp)
   const fromWhisper = await fetchTranscriptViaWhisper(videoId);
-  if (fromWhisper) return fromWhisper.slice(0, 8000);
+  if (fromWhisper) return normalizeForFinance(fromWhisper).slice(0, 8000);
 
-  // 4) None
   return '';
 }
 
 /* ============================================================
-   YOUTUBE FETCH (API or RSS)
+   YOUTUBE FETCH (API or RSS) — NOW WITH PLAYLISTS
    ============================================================ */
 async function youtube(endpoint, params) {
   if (!YT_API_KEY) throw new Error('YT_API_KEY missing (or set CHANNEL_ID to use RSS)');
   const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
   url.searchParams.set('key', YT_API_KEY);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
   const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -408,13 +472,133 @@ async function fetchRecentVideosRSS(channelId, max = 8) {
   return out;
 }
 
+// Playlists: fetch all, then filter to the three named sections
+const TARGET_PLAYLIST_TITLES = ['Shorts', 'Daily Close Updates', 'Education'];
+function canonicalTitle(s='') { return s.trim().toLowerCase(); }
+
+async function fetchAllPlaylistsForChannel(channelId) {
+  let pageToken = '';
+  const found = [];
+  do {
+    const j = await youtube('playlists', {
+      part: 'snippet,contentDetails',
+      channelId,
+      maxResults: '50',
+      pageToken: pageToken || undefined
+    });
+    for (const p of (j.items || [])) {
+      found.push({
+        id: p.id,
+        title: p.snippet?.title || '',
+        count: p.contentDetails?.itemCount || 0
+      });
+    }
+    pageToken = j.nextPageToken || '';
+  } while (pageToken);
+  return found;
+}
+
+async function fetchPlaylistVideos(playlistId, maxItems = 25) {
+  let pageToken = '';
+  const items = [];
+  do {
+    const j = await youtube('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: '50',
+      pageToken: pageToken || undefined
+    });
+    for (const it of (j.items || [])) {
+      const vid = it.contentDetails?.videoId || it.snippet?.resourceId?.videoId;
+      if (!vid) continue;
+      items.push({
+        videoId: vid,
+        title: it.snippet?.title || '',
+        description: it.snippet?.description || '',
+        publishedAt: it.contentDetails?.videoPublishedAt || it.snippet?.publishedAt || '',
+        url: `https://youtu.be/${vid}`
+      });
+    }
+    pageToken = j.nextPageToken || '';
+  } while (pageToken && items.length < maxItems);
+
+  return items
+    .sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+    .slice(0, maxItems);
+}
+
+/* ============================================================
+   NUMERIC VERIFICATION (tolerant) + PRICE SANITY
+   ============================================================ */
+function parseNumericTokens(s='') {
+  const out = [];
+  const re = /\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kKmM%])?/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const raw = m[0];
+    const num = m[1].replace(/,/g, '');
+    let val = Number(num);
+    const suf = (m[2] || '').toLowerCase();
+    if (suf === 'k') val *= 1e3;
+    else if (suf === 'm') val *= 1e6;
+    const isPercent = suf === '%' || /%/.test(raw);
+    const isUSD = /^\s*\$/.test(raw);
+    out.push({ raw, value: val, isPercent, isUSD });
+  }
+  return out;
+}
+
+function appearsInTranscriptHuman(nRaw, transcript) {
+  const want = parseNumericTokens(nRaw);
+  if (!want.length) return false;
+  const tnums = parseNumericTokens(transcript);
+  return want.every(w =>
+    tnums.some(t => {
+      if (w.isPercent !== t.isPercent) return false;
+      const normRaw = r => r.replace(/[,\s\$]/g,'').toLowerCase();
+      if (normRaw(w.raw) === normRaw(t.raw)) return true;
+      const denom = Math.max(1, Math.abs(w.value));
+      const rel = Math.abs(w.value - t.value) / denom;
+      return rel <= 0.01;
+    })
+  );
+}
+
+async function spotPrices(symbols=[]) {
+  if (!ALLOW_PRICE_LOOKUPS || !symbols.length) return {};
+  const MAP = { BTC:'bitcoin', ETH:'ethereum', SOL:'solana', XRP:'ripple', ADA:'cardano', AVAX:'avalanche-2', LINK:'chainlink' };
+  const ids = symbols.map(s => MAP[s]).filter(Boolean);
+  if (!ids.length) return {};
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
+  try {
+    const r = await fetch(url);
+    const j = await r.json();
+    const out = {};
+    for (const [k,v] of Object.entries(j)) {
+      const sym = Object.keys(MAP).find(s => MAP[s] === k);
+      out[sym] = v.usd;
+    }
+    return out;
+  } catch { return {}; }
+}
+
+async function filterImplausibleLevels(long) {
+  const syms = Array.from(new Set((long?.key_levels || []).map(l => (l.asset||'').toUpperCase())))
+    .filter(s => TICKER_WHITELIST.has(s));
+  const spot = await spotPrices(syms);
+  if (!Object.keys(spot).length) return long;
+  long.key_levels = (long.key_levels || []).filter(l => {
+    const a = (l.asset||'').toUpperCase();
+    const p = Number(String(l.level||'').replace(/[^\d.]/g,''));
+    if (!a || !p || !spot[a]) return true;
+    return p > spot[a] / 100 && p < spot[a] * 100;
+  });
+  return long;
+}
+
 /* ============================================================
    SUMMARIZATION
-   - Paid path: OpenAI (if FREE_MODE=0 and OPENAI_API_KEY present)
-   - Free path: rule-based extractive summarizer (no external API)
    ============================================================ */
-
-// tiny stopword set for heuristics
 const STOP = new Set((
   'a,an,and,are,as,at,be,by,for,from,has,have,i,in,is,it,of,on,or,that,the,then,there,these,those,to,was,were,will,with,about,into,over,after,before,than,not,so,just,like,you,can,if,we,they,this,our'
 ).split(','));
@@ -445,6 +629,8 @@ function scoreSentences(sentences) {
       if (/\d/.test(w)) score += 1.5;
       if (/(\b\d{3,5}\b|\b\d+\.\d+\b)/.test(w)) score += 1.0;
     }
+    if (/\$/.test(s)) score *= 1.08;
+    if ([...TICKER_WHITELIST].some(t => s.includes(t))) score *= 1.10;
     if (s.length < 140) score *= 1.05;
     return score;
   });
@@ -463,6 +649,11 @@ function extractNumbers(text, limit = 40) {
     .slice(0, limit)
     .map(m => m[1]);
 }
+function postFix(s='') {
+  return normalizeForFinance(
+    String(s || '').replace(/xxx/gi, '—')
+  );
+}
 
 async function summarizeFree(v, transcript) {
   const sentences = tokenizeSentences(transcript).slice(0, 400);
@@ -476,54 +667,68 @@ async function summarizeFree(v, transcript) {
   const contextIdx = topKIndices(scores, Math.min(1, sentences.length))[0] ?? 0;
   const context = sentences[Math.max(0, contextIdx)];
 
-  // price-ish levels (keep a few)
   const levelCandidates = Array.from(new Set(
     (transcript.match(/\b\d{2,5}(?:\.\d+)?\b/g) || []).slice(0, 6)
   ));
-  const key_levels = levelCandidates.map(p => ({
+  let key_levels = levelCandidates.map(p => ({
     asset: '',
     level: p,
     direction: '',
     notes: ''
   }));
 
-  // more sentences for takeaways + details
   const top8 = topKIndices(scores, 8);
   const remainder = top8.filter(i => !top3Idx.includes(i));
   const takeaways = remainder.slice(0, 4).map(i => sentences[i]);
 
-  // "Notable Details": grab 3–6 specifics not already used
   const used = new Set([...top3, ...takeaways]);
   const details = sentences
     .filter(s => !used.has(s))
     .filter(s => /(\bBTC\b|\bETH\b|\bSOL\b|\bSPY\b|\bQQQ\b|\bUSD\b|\bDXY\b|\bVIX\b|\d)/.test(s))
     .slice(0, 6);
 
-  // Cleanup (tickers/xxx)
-  const fix = s =>
-    String(s || '')
-      .replace(/\bSoul\b/g, 'SOL')
-      .replace(/\bSOUL\b/g, 'SOL')
-      .replace(/\bEeth\b/gi, 'ETH')
-      .replace(/xxx/gi, '—');
-
-  const bullets = top3.map(s => {
-    const t = fix(s);
+  let bullets = top3.map(s => {
+    const t = postFix(s);
     return t.length > 160 ? t.slice(0, 157) + '…' : t;
   });
 
-  return {
-    ...v,
-    bullets,
-    long: {
-      context: fix(context),
-      key_levels,
-      setups: [],
-      takeaways: takeaways.map(fix),
-      catalysts: [],
-      notable_details: details.map(fix)
-    }
+  let long = {
+    context: postFix(context),
+    key_levels,
+    setups: [],
+    takeaways: takeaways.map(postFix),
+    catalysts: [],
+    notable_details: details.map(postFix)
   };
+
+  const serialized = (bullets.join(' ') + ' ' + JSON.stringify(long));
+  const nums = serialized.match(/\$?\s*\d[\d,]*(?:\.\d+)?\s*[kKmM%]?/g) || [];
+  const hasUnseen = nums.some(n => !appearsInTranscriptHuman(n, transcript));
+
+  if (hasUnseen) {
+    const scrub = s => String(s).replace(/\$?\s*\d[\d,]*(?:\.\d+)?\s*[kKmM%]?/g, 'x');
+    bullets = bullets.map(scrub);
+    long = {
+      ...long,
+      context: scrub(long.context || ''),
+      takeaways: (long.takeaways || []).map(scrub),
+      catalysts: (long.catalysts || []).map(scrub),
+      key_levels: (long.key_levels || []).map(kl => ({ ...kl, level: scrub(kl.level || ''), notes: scrub(kl.notes || '') })),
+      notable_details: (long.notable_details || []).map(scrub),
+      note: 'Numerical details scrubbed — mismatch with transcript.'
+    };
+  }
+
+  long = await filterImplausibleLevels(long);
+
+  if (Array.isArray(long.key_levels)) {
+    long.key_levels = long.key_levels.map(l => {
+      const a = postFix(l.asset || '').toUpperCase();
+      return { ...l, asset: TICKER_WHITELIST.has(a) ? a : '' };
+    });
+  }
+
+  return { ...v, bullets, long };
 }
 
 async function summarizeWithOpenAI(v, transcript) {
@@ -531,28 +736,32 @@ async function summarizeWithOpenAI(v, transcript) {
     return { ...v, bullets: ['Transcript unavailable — summary skipped.'], long: { skipped: true } };
   }
 
-  const numTokens = extractNumbers(transcript, 200);
+  const ALLOWED_TICKERS = Array.from(TICKER_WHITELIST).join(', ');
 
   const SYSTEM_PROMPT = `
 You are a factual trading summarizer.
-Keep all asset tickers exactly as they appear (e.g., SOL, BTC, ETH).
-Never replace tickers with English words (e.g., do not write "Soul").
-If numeric data is unclear, omit or say "unspecified"—never use 'xxx'.
-Be concise, precise, and faithful to the transcript.`;
+• Only use tickers from this whitelist: ${ALLOWED_TICKERS}.
+• Keep tickers EXACTLY as uppercase tickers (e.g., SOL, BTC, ETH). Never replace them with words ("Soul", "Ether", etc.).
+• Only include numeric values that are PRESENT in the transcript (you may reformat $, commas).
+• If something is unclear, omit it or say "unspecified". Do not invent values.
+Be concise, precise, and faithful to the transcript.
+`.trim();
 
-  const prompt = `Return JSON:
+  const prompt = `Return JSON that conforms to:
 {
-  "tldr": ["2–3 concise bullets (<=60 words total)"],
+  "tldr": ["<=3 bullets, <=60 words total"],
   "long": {
-    "context": "2–4 sentences of context",
+    "context": "2–4 sentences",
     "key_levels": [{"asset":"","level":"","direction":"support|resistance|pivot","notes":""}],
     "setups": [{"name":"","thesis":"","trigger":"","invalidation":"","targets":""}],
-    "takeaways": ["3–6 concise bullets"],
-    "catalysts": ["FOMC, CPI, earnings, etc if mentioned"],
-    "notable_details": ["3–6 specific, actionable details not already repeated in TL;DR—e.g., precise levels, timeframe mentions, indicators used, risk notes, assets/tickers referenced, tools or sources mentioned"]
+    "takeaways": ["3–6 bullets"],
+    "catalysts": ["if mentioned"],
+    "notable_details": ["3–6 details, not repeated from TL;DR"]
   }
 }
-
+RULES:
+- Asset codes MUST be from [${ALLOWED_TICKERS}]. If not present in transcript, omit.
+- Every numeric you output MUST appear in the transcript (you may reformat $, commas).
 Transcript:
 ${transcript.slice(0, 6000)}`;
 
@@ -570,34 +779,28 @@ ${transcript.slice(0, 6000)}`;
     let data = {};
     try { data = JSON.parse(res.choices[0].message.content || '{}'); } catch {}
 
-    // Parse sections
     const tldr = Array.isArray(data.tldr) ? data.tldr.slice(0, 3) : [];
-    const long = data.long || {};
+    let long = data.long || {};
     long.notable_details = Array.isArray(long.notable_details) ? long.notable_details.slice(0, 6) : [];
 
-    // --- Post-processing cleanup (tickers, placeholders) ---
-    const fix = s =>
-      String(s || '')
-        .replace(/\bSoul\b/g, 'SOL')
-        .replace(/\bSOUL\b/g, 'SOL')
-        .replace(/\bEeth\b/gi, 'ETH')
-        .replace(/xxx/gi, '—');
+    const cleanBullets = (tldr || []).map(postFix);
+    if (long?.context) long.context = postFix(long.context);
+    if (Array.isArray(long.takeaways)) long.takeaways = long.takeaways.map(postFix);
+    if (Array.isArray(long.catalysts)) long.catalysts = long.catalysts.map(postFix);
+    if (Array.isArray(long.notable_details)) long.notable_details = long.notable_details.map(postFix);
+    if (Array.isArray(long.key_levels)) {
+      long.key_levels = long.key_levels.map(l => {
+        const a = postFix(l.asset || '').toUpperCase();
+        return { ...l, asset: TICKER_WHITELIST.has(a) ? a : '' };
+      });
+    }
 
-    const cleanBullets = tldr.map(fix);
-    if (long?.context) long.context = fix(long.context);
-    if (Array.isArray(long.takeaways)) long.takeaways = long.takeaways.map(fix);
-    if (Array.isArray(long.key_levels)) long.key_levels = long.key_levels.map(l => ({ ...l, asset: fix(l.asset || '') }));
-    if (Array.isArray(long.catalysts)) long.catalysts = long.catalysts.map(fix);
-    if (Array.isArray(long.notable_details)) long.notable_details = long.notable_details.map(fix);
-
-    // Number safety: ensure any numbers the model used appear in transcript
-    const numbersInText = (cleanBullets.join(' ') + ' ' + JSON.stringify(long))
-      .match(/\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*[kKmMbB%]?)\b/g) || [];
-    const appears = n => numTokens.some(tok => tok.toLowerCase() === n.toLowerCase());
-    const hasUnseen = numbersInText.some(n => !appears(n));
+    const serialized = (cleanBullets.join(' ') + ' ' + JSON.stringify(long));
+    const modelNums = serialized.match(/\$?\s*\d[\d,]*(?:\.\d+)?\s*[kKmM%]?/g) || [];
+    const hasUnseen = modelNums.some(n => !appearsInTranscriptHuman(n, transcript));
 
     if (hasUnseen) {
-      const scrub = s => String(s).replace(/\d/g, 'x');
+      const scrub = s => String(s).replace(/\$?\s*\d[\d,]*(?:\.\d+)?\s*[kKmM%]?/g, 'x');
       return {
         ...v,
         bullets: cleanBullets.map(scrub),
@@ -612,6 +815,8 @@ ${transcript.slice(0, 6000)}`;
         }
       };
     }
+
+    long = await filterImplausibleLevels(long);
 
     return { ...v, bullets: cleanBullets, long };
   } catch (e) {
@@ -629,7 +834,7 @@ async function summarizeItem(v) {
 }
 
 /* ============================================================
-   HTML RENDER
+   HTML RENDER — PER-VIDEO + CONTENT PAGE (GROUPED)
    ============================================================ */
 function summaryHtml({ title, datePT, url, videoId, bullets, long }) {
   const metaDesc = (bullets || []).join(' • ').slice(0, 155);
@@ -671,6 +876,8 @@ body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Seg
 h1{font-size:2rem;margin:.5rem 0}p.meta{color:#9aa3b2;margin:.25rem 0 1rem}
 ul{color:#cbd2dd}table{color:#cbd2dd;font-size:.9rem}th{text-align:left;color:#9aa3b2;font-weight:600}
 a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.55rem .85rem;color:#fff;text-decoration:none;margin-top:.5rem}
+.grid{display:grid;grid-template-columns:1fr;gap:.75rem}
+@media(min-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head><body><div class="container">
 <a class="btn" href="../summaries.html">← All summaries</a>
@@ -693,53 +900,218 @@ a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255
 </article></div></body></html>`;
 }
 
+// Content page (tabs per playlist)
+function contentPageHtml(sections) {
+  // sections: [{title, items:[{title,datePT,permalink,url,videoId,bullets}]}]
+  const tabs = sections.map((s,i) =>
+    `<button class="tab${i===0?' active':''}" data-tab="tab-${i}">${esc(s.title)} (${s.items.length})</button>`
+  ).join('');
+  const panes = sections.map((s,i) => `
+    <div class="pane${i===0?' show':''}" id="tab-${i}">
+      <div class="grid">
+        ${s.items.map(it => `
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/${it.videoId}/hqdefault.jpg" alt="${esc(it.title)}" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">${esc(it.title)}</h3>
+            <p class="meta">${esc(it.datePT)} · <a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="${esc(it.permalink)}">Summary</a></p>
+            ${it.bullets?.length ? `<ul>${it.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  return `<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><title>Video Summaries</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="./favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6;margin:0}
+.container{max-width:1100px;margin:0 auto;padding:2rem 1.25rem}
+h1{font-size:2rem;margin:0 0 1rem}
+.tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.tab{background:transparent;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:.4rem .9rem;cursor:pointer}
+.tab.active{background:rgba(255,255,255,.1)}
+.pane{display:none}
+.pane.show{display:block}
+.grid{display:grid;grid-template-columns:1fr;gap:1rem}
+@media(min-width:760px){.grid{grid-template-columns:repeat(2,1fr)}}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:1rem}
+.thumb{aspect-ratio:16/9;border-radius:12px;overflow:hidden;margin-bottom:.5rem}
+.thumb img{display:block;width:100%;height:100%;object-fit:cover}
+p.meta{color:#9aa3b2;margin:.25rem 0 .5rem}
+a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.35rem .65rem;color:#fff;text-decoration:none;margin-left:.25rem}
+ul{color:#cbd2dd}
+</style>
+</head><body>
+<div class="container">
+  <h1>Video Summaries</h1>
+  <div class="tabs">${tabs}</div>
+  ${panes}
+</div>
+<script>
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(p=>p.classList.remove('show'));
+    btn.classList.add('active');
+    const id = btn.getAttribute('data-tab');
+    document.getElementById(id).classList.add('show');
+  });
+});
+</script>
+</body></html>`;
+}
+
 /* ============================================================
    MAIN
    ============================================================ */
 (async function main() {
-  // check last ID to skip duplicates
+  // check last ID to skip duplicates (applies only when we use simple "recent" flow)
   let lastId = '';
   try { lastId = (await fs.readFile(OUT_LASTID, 'utf8')).trim(); } catch {}
 
-  let items = [];
-  if (CHANNEL_ID) {
-    items = await fetchRecentVideosRSS(CHANNEL_ID, MAX_ITEMS);
-  } else {
-    const channelId = await resolveChannelIdFromHandle(CHANNEL_HANDLE);
-    items = await fetchRecentVideosAPI(channelId, MAX_ITEMS);
+  // Resolve channelId (needed for either playlists or fallback)
+  let resolvedChannelId = CHANNEL_ID;
+  if (!resolvedChannelId && YT_API_KEY) {
+    resolvedChannelId = await resolveChannelIdFromHandle(CHANNEL_HANDLE);
   }
-  if (!items.length) throw new Error('No videos found');
 
-  const newestId = items[0]?.videoId;
-  if (newestId && newestId === lastId) {
-    console.log('No new video since last run; skipping.');
-    process.exit(0);
+  // Data “containers”
+  let sections = [];  // for content page tabs
+  let videoMap = new Map(); // videoId -> video meta (title, url, publishedAt)
+
+  const usingApi = Boolean(YT_API_KEY);
+  let fetchedFromPlaylists = false;
+
+  if (usingApi && resolvedChannelId) {
+    // Fetch all playlists, filter to target titles
+    const allPlaylists = await fetchAllPlaylistsForChannel(resolvedChannelId);
+    const want = new Map(); // canonical title -> {id,title}
+    const targetSet = new Set(TARGET_PLAYLIST_TITLES.map(canonicalTitle));
+    for (const p of allPlaylists) {
+      const key = canonicalTitle(p.title);
+      if (targetSet.has(key)) want.set(key, { id: p.id, title: p.title });
+    }
+
+    // For each target playlist, fetch videos
+    const playlistSections = [];
+    for (const t of TARGET_PLAYLIST_TITLES) {
+      const key = canonicalTitle(t);
+      const meta = want.get(key);
+      if (!meta) continue;
+
+      const vids = await fetchPlaylistVideos(meta.id, MAX_PER_PLAYLIST);
+      // Fill the map (dedupe across playlists)
+      for (const v of vids) {
+        if (!videoMap.has(v.videoId)) videoMap.set(v.videoId, v);
+      }
+      playlistSections.push({ title: meta.title, items: vids });
+    }
+
+    if (playlistSections.length) {
+      sections = playlistSections;
+      fetchedFromPlaylists = true;
+    }
   }
+
+  // Fallback: recent videos if no playlists (RSS if CHANNEL_ID and no YT_API_KEY)
+  if (!fetchedFromPlaylists) {
+    let items = [];
+    if (CHANNEL_ID) {
+      items = await fetchRecentVideosRSS(CHANNEL_ID, MAX_ITEMS);
+    } else {
+      const channelId = resolvedChannelId || await resolveChannelIdFromHandle(CHANNEL_HANDLE);
+      items = await fetchRecentVideosAPI(channelId, MAX_ITEMS);
+    }
+    if (!items.length) throw new Error('No videos found');
+
+    // Keep original “latest changed?” optimization
+    const newestId = items[0]?.videoId;
+    if (newestId && newestId === lastId) {
+      console.log('No new video since last run; skipping.');
+      process.exit(0);
+    }
+
+    // make a single default section
+    sections = [{ title: 'All Videos', items }];
+    for (const v of items) videoMap.set(v.videoId, v);
+  }
+
+  // Summarize all videos found (deduped across playlists)
+  const allVideos = Array.from(videoMap.values())
+    .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt));
 
   const summarized = [];
-  for (const v of items) summarized.push(await summarizeItem(v));
+  for (const v of allVideos) summarized.push(await summarizeItem(v));
 
-  const newest = summarized[0];
-  const latest = { title: newest.title, datePT: toPTDate(newest.publishedAt), url: newest.url, videoId: newest.videoId, bullets: newest.bullets };
-
+  // Per-video summary pages + section index items
   await fs.mkdir(SUMMARIES_DIR, { recursive: true });
-  const indexItems = [];
-  for (const s of summarized) {
-    const slug = `${toPTDate(s.publishedAt)}-${slugify(s.title)}`;
-    const permalink = `summaries/${slug}.html`;
-    indexItems.push({ title: s.title, datePT: toPTDate(s.publishedAt), url: s.url, videoId: s.videoId, bullets: s.bullets, permalink });
-    const html = summaryHtml({ title: s.title, datePT: toPTDate(s.publishedAt), url: s.url, videoId: s.videoId, bullets: s.bullets, long: s.long });
-    await fs.writeFile(path.join(SUMMARIES_DIR, `${slug}.html`), html, 'utf8');
+
+  // Build lookup: videoId -> summarized object
+  const sumById = new Map(summarized.map(s => [s.videoId, s]));
+
+  // Create per-summary pages and index entries (grouped per section)
+  const indexSections = [];
+  for (const section of sections) {
+    const items = [];
+    for (const s of section.items) {
+      const sv = sumById.get(s.videoId);
+      if (!sv) continue;
+      const slug = `${toPTDate(sv.publishedAt)}-${slugify(sv.title)}`;
+      const permalink = `summaries/${slug}.html`;
+      const html = summaryHtml({
+        title: sv.title,
+        datePT: toPTDate(sv.publishedAt),
+        url: sv.url,
+        videoId: sv.videoId,
+        bullets: sv.bullets,
+        long: sv.long
+      });
+      await fs.writeFile(path.join(SUMMARIES_DIR, `${slug}.html`), html, 'utf8');
+
+      items.push({
+        title: sv.title,
+        datePT: toPTDate(sv.publishedAt),
+        url: sv.url,
+        videoId: sv.videoId,
+        bullets: sv.bullets,
+        permalink
+      });
+    }
+    // Sort each section newest→oldest
+    items.sort((a,b)=> new Date(b.datePT) - new Date(a.datePT));
+    indexSections.push({ title: section.title, items });
   }
 
+  // latest.json (from newest summarized overall)
+  const newest = summarized
+    .slice()
+    .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt))[0];
+
+  const latest = newest
+    ? { title: newest.title, datePT: toPTDate(newest.publishedAt), url: newest.url, videoId: newest.videoId, bullets: newest.bullets }
+    : { title: '', datePT: '', url: '', videoId: '', bullets: [] };
+
+  // Write grouped index JSON + content page
+  await fs.writeFile(OUT_INDEX, JSON.stringify({ sections: indexSections }, null, 2), 'utf8');
+  await fs.writeFile(OUT_CONTENT_PAGE, contentPageHtml(indexSections), 'utf8');
+
+  // Maintain lastID optimization: use newest overall video
+  if (newest) await fs.writeFile(OUT_LASTID, newest.videoId || '', 'utf8');
+
+  // Also keep latest.json for any external consumers
   await fs.writeFile(OUT_LATEST, JSON.stringify(latest, null, 2), 'utf8');
-  await fs.writeFile(OUT_INDEX,  JSON.stringify({ items: indexItems }, null, 2), 'utf8');
-  await fs.writeFile(OUT_LASTID, newestId || '', 'utf8');
 
   console.log(
-    'Wrote latest.json, yt-index.json and',
-    indexItems.length,
-    'summary pages (via ' + (CHANNEL_ID ? 'RSS' : 'API') + ').',
-    FREE_MODE ? 'Mode: FREE (rule-based summarizer)' : 'Mode: OpenAI summarizer'
+    'Wrote latest.json, yt-index.json (grouped), summaries.html, and',
+    summarized.length,
+    'summary pages (',
+    fetchedFromPlaylists ? 'via Playlists+API' : (CHANNEL_ID ? 'via RSS' : 'via API recent'),
+    ').',
+    FREE_MODE ? 'Mode: FREE (rule-based summarizer)' : 'Mode: OpenAI summarizer',
+    ALLOW_PRICE_LOOKUPS ? '(price sanity: ON)' : '(price sanity: OFF)'
   );
 })().catch(err => { console.error(err); process.exit(1); });

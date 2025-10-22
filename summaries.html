@@ -1,16 +1,19 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Video Summaries — syndotc™</title>
 <link rel="icon" href="favicon.ico">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6;margin:0}
   .container{max-width:1120px;margin:0 auto;padding:2rem 1.25rem}
   .grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-  .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease}
+  .card:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
   .thumb{aspect-ratio:16/9;background:#0f1016;border-bottom:1px solid rgba(255,255,255,.08)}
   .thumb img{width:100%;height:100%;object-fit:cover}
   .body{padding:1rem 1rem 1.25rem}
@@ -25,41 +28,60 @@
     <div id="list" class="grid"></div>
   </div>
 
-  <script>
-    (async function(){
-      const status = document.getElementById('status');
-      try {
-        // IMPORTANT: relative path so it works at /syndotcwebsite/
-        const res = await fetch('yt-index.json', { cache:'no-store' });
-        if (!res.ok) throw new Error('Failed to load yt-index.json: ' + res.status);
-        const index = await res.json();
+<script>
+(async function(){
+  const status = document.getElementById('status');
+  try {
+    const res = await fetch('yt-index.json', { cache:'no-store' });
+    if (!res.ok) throw new Error('Failed to load yt-index.json: ' + res.status);
+    const index = await res.json();
 
-        const items = Array.isArray(index.items) ? index.items : [];
-        const list  = document.getElementById('list');
-        list.innerHTML = '';
+    // Flatten both formats ({items:[]} OR {sections:[{items:[]}]})
+    let items = [];
+    if (Array.isArray(index.items)) {
+      items = index.items.slice();
+    } else if (Array.isArray(index.sections)) {
+      index.sections.forEach(s => {
+        if (Array.isArray(s.items)) items = items.concat(s.items);
+      });
+    }
 
-        if (!items.length) {
-          status.textContent = 'No summaries yet.';
-          return;
-        }
+    // Sort newest→oldest by datePT (YYYY-MM-DD)
+    const parseISO = s => {
+      if (!s) return 0;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
+      if (m) return new Date(+m[1], +m[2]-1, +m[3]).getTime();
+      const t = Date.parse(s);
+      return isNaN(t) ? 0 : t;
+    };
+    items.sort((a,b)=>parseISO(b.datePT)-parseISO(a.datePT));
 
-        status.remove();
+    const list = document.getElementById('list');
+    list.innerHTML = '';
 
-        items.forEach(function(v){
-          // v.permalink should be relative like "summaries/2025-10-08-foo.html"
-          const a = document.createElement('a');
-          a.href = v.permalink;
-          a.className = 'card';
-          a.innerHTML =
-            '<div class="thumb"><img src="https://img.youtube.com/vi/'+v.videoId+'/hqdefault.jpg" alt="'+v.title+'" loading="lazy"></div>'+
-            '<div class="body"><h3>'+v.title+'</h3><p class="muted">'+(v.datePT||'')+'</p><p style="color:#cbd2dd">'+((v.bullets||[]).join(' · '))+'</p></div>';
-          list.appendChild(a);
-        });
-      } catch(e) {
-        console.warn(e);
-        status.textContent = 'Could not load summaries.';
-      }
-    })();
-  </script>
+    if (!items.length) {
+      status.textContent = 'No summaries yet.';
+      return;
+    }
+
+    status.remove();
+
+    items.forEach(v=>{
+      const a = document.createElement('a');
+      a.href = v.permalink;
+      a.className = 'card';
+      a.innerHTML =
+        '<div class="thumb"><img src="https://img.youtube.com/vi/'+v.videoId+'/hqdefault.jpg" alt="'+(v.title||'')+'" loading="lazy"></div>'+
+        '<div class="body"><h3>'+ (v.title||'') +'</h3>'+
+        '<p class="muted">'+(v.datePT||'')+'</p>'+
+        '<p style="color:#cbd2dd">'+((v.bullets||[]).join(' · '))+'</p></div>';
+      list.appendChild(a);
+    });
+  } catch(e) {
+    console.warn(e);
+    status.textContent = 'Could not load summaries.';
+  }
+})();
+</script>
 </body>
 </html>
