@@ -2,6 +2,7 @@
 // Full file — captions via official YouTube API (OAuth) first,
 // then public scrape, then offline STT (whisper.cpp).
 // Summarization supports $0 rule-based (FREE_MODE=1) or OpenAI (set OPENAI_API_KEY).
+// Now with: processed cache + per-run cap + playlist tabs content page.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -21,16 +22,11 @@ const CHANNEL_HANDLE       = process.env.CHANNEL_HANDLE || '@Syn.Trades';
 const CHANNEL_ID           = process.env.CHANNEL_ID || ''; // optional: if provided, use RSS (no API for videos list)
 const SITE_URL             = (process.env.SITE_URL || '').replace(/\/$/, '');
 const SITE_TZ              = process.env.SITE_TZ || 'America/Los_Angeles';
-
-// Global caps / pacing
-const MAX_ITEMS            = Number(process.env.MAX_ITEMS || 15);   // fallback "recent videos" cap
-const MAX_PER_PLAYLIST     = Number(process.env.MAX_PER_PLAYLIST || 25); // cap per playlist when fetching via API
-const MAX_SUMMARIES_PER_RUN= Number(process.env.MAX_SUMMARIES_PER_RUN || 40); // summarize at most N videos in one run
-const FETCH_SLEEP_MS       = Number(process.env.FETCH_SLEEP_MS || 250); // small pause between caption fetches
-
-// Behavior flags
-const REQUIRE_PLAYLISTS_STRICT = process.env.REQUIRE_PLAYLISTS_STRICT === '1'; // if true, fail run when playlists can't be fetched/cached
-const ALLOW_RECENT_FALLBACK     = process.env.ALLOW_RECENT_FALLBACK !== '0';   // allow recent-videos fallback when playlists fail
+const MAX_ITEMS            = Number(process.env.MAX_ITEMS || 15);  // fallback recent videos cap
+const MAX_PER_PLAYLIST     = Number(process.env.MAX_PER_PLAYLIST || 25); // cap per playlist fetch
+const MAX_SUMMARIES_PER_RUN= Number(process.env.MAX_SUMMARIES_PER_RUN || 40); // NEW: cap new summaries per run
+const INCLUDE_SHORTS       = process.env.INCLUDE_SHORTS === '1';
+const SHORTS_MAX           = Number(process.env.SHORTS_MAX || 50);
 
 // OAuth env for official captions
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || '';
@@ -51,11 +47,11 @@ const ALLOW_PRICE_LOOKUPS  = process.env.ALLOW_PRICE_LOOKUPS === '1';
 // Output paths
 const ROOT                 = process.cwd();
 const OUT_LATEST           = path.join(ROOT, 'latest.json');
-const OUT_INDEX            = path.join(ROOT, 'yt-index.json');    // grouped by playlist sections when using API
+const OUT_INDEX            = path.join(ROOT, 'yt-index.json');    // now grouped by playlist sections when using API
 const SUMMARIES_DIR        = path.join(ROOT, 'summaries');
 const OUT_LASTID           = path.join(ROOT, '.last-video-id');
 const OUT_CONTENT_PAGE     = path.join(ROOT, 'summaries.html');   // grouped content page with tabs
-const CACHE_DIR            = path.join(ROOT, '.cache');           // new: caches playlistItems to survive quota
+const PROCESSED_FILE       = path.join(ROOT, '.processed.json');   // NEW: processed cache (videoId map)
 
 if (!SITE_URL) {
   console.error('Missing env: SITE_URL');
@@ -69,30 +65,6 @@ if (!FREE_MODE && !OPENAI_API_KEY) {
 const ai = !FREE_MODE && OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 /* ============================================================
-   UTIL HELPERS
-   ============================================================ */
-const sleep = ms => new Promise(res => setTimeout(res, ms));
-
-function toPTDate(iso, tz = SITE_TZ) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-CA', { timeZone: tz });
-}
-function slugify(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
-}
-function esc(s = '') {
-  return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-}
-function run(cmd, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { windowsHide: true, ...opts }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
-      resolve(stdout);
-    });
-  });
-}
-
-/* ============================================================
    DOMAIN GUARDS — TICKERS / TYPO NORMALIZATION
    ============================================================ */
 const TICKER_WHITELIST = new Set([
@@ -100,15 +72,16 @@ const TICKER_WHITELIST = new Set([
   'SPY','QQQ','DXY','VIX','USD'
 ]);
 
+// Common ASR confusions → canonical tickers (lowercased compare)
 const ASR_FIX_MAP = [
-  { re: /\bs\s*o\s*l\b/gi, rep: 'SOL' },
-  { re: /\bs-?o-?l\b/gi, rep: 'SOL' },
-  { re: /\bsoul\b/gi, rep: 'SOL' },
-  { re: /\bsole\b/gi, rep: 'SOL' },
-  { re: /\bsold\b/gi, rep: 'SOL' },
-  { re: /\beeth\b/gi, rep: 'ETH' },
+  { re: /\bs\s*o\s*l\b/gi, rep: 'SOL' },          // S O L → SOL
+  { re: /\bs-?o-?l\b/gi, rep: 'SOL' },            // S-O-L → SOL
+  { re: /\bsoul\b/gi, rep: 'SOL' },               // soul → SOL
+  { re: /\bsole\b/gi, rep: 'SOL' },               // sole → SOL
+  { re: /\bsold\b/gi, rep: 'SOL' },               // sold → SOL
+  { re: /\beeth\b/gi, rep: 'ETH' },               // eeth → ETH
   { re: /\bethh\b/gi, rep: 'ETH' },
-  { re: /\bbtc\b/gi, rep: 'BTC' },
+  { re: /\bbtc\b/gi, rep: 'BTC' },                // force casing
   { re: /\beth\b/gi, rep: 'ETH' },
   { re: /\bxrp\b/gi, rep: 'XRP' },
   { re: /\bavax\b/gi, rep: 'AVAX' },
@@ -129,21 +102,17 @@ function normalizeTextBasic(s='') {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
 function collapseSpacedCaps(s='') {
   return s.replace(/\b([A-Za-z])(?:\s+[A-Za-z]){1,4}\b/g, m => m.replace(/\s+/g, '').toUpperCase());
 }
-
 function fixASRTickers(s='') {
   let out = s;
   for (const { re, rep } of ASR_FIX_MAP) out = out.replace(re, rep);
   return out;
 }
-
 function protectTickersWhitelist(s='') {
   return s.replace(/\b([A-Z]{2,5})\b/g, (m, g1) => TICKER_WHITELIST.has(g1) ? g1 : m);
 }
-
 function normalizeForFinance(s='') {
   let t = normalizeTextBasic(s);
   t = collapseSpacedCaps(t);
@@ -153,18 +122,48 @@ function normalizeForFinance(s='') {
 }
 
 /* ============================================================
+   UTILS
+   ============================================================ */
+async function readJSONSafe(file, fallback = null) {
+  try {
+    const txt = await fs.readFile(file, 'utf8');
+    return JSON.parse(txt);
+  } catch {
+    return fallback;
+  }
+}
+async function writeJSON(file, obj) {
+  await fs.writeFile(file, JSON.stringify(obj, null, 2), 'utf8');
+}
+function toPTDate(iso, tz = SITE_TZ) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-CA', { timeZone: tz });
+}
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
+}
+function esc(s = '') {
+  return String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+}
+function run(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { windowsHide: true, ...opts }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout);
+    });
+  });
+}
+
+/* ============================================================
    TRANSCRIPT HELPERS
    Order: Official API (OAuth) → library → watch-page → local STT
    ============================================================ */
-
-// --- OAuth captions via YouTube Data API (works because you're an Editor) ---
 async function getYouTubeAuthFromEnv() {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) return null;
   const oauth2 = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, 'http://127.0.0.1');
   oauth2.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
   return oauth2;
 }
-
 function srtToText(srt) {
   return srt
     .replace(/\r/g, '')
@@ -177,7 +176,6 @@ function srtToText(srt) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
 async function fetchTranscriptViaYouTubeAPI(videoId) {
   try {
     const auth = await getYouTubeAuthFromEnv();
@@ -189,7 +187,6 @@ async function fetchTranscriptViaYouTubeAPI(videoId) {
 
     const isEn  = c => (c.snippet?.language || '').toLowerCase().startsWith('en');
     const isASR = c => (c.snippet?.trackKind || '').toUpperCase() === 'ASR';
-
     const pick =
       items.find(c => isEn(c) && isASR(c)) ||
       items.find(isEn) ||
@@ -197,7 +194,6 @@ async function fetchTranscriptViaYouTubeAPI(videoId) {
       items[0];
 
     if (!pick) return '';
-
     const res = await youtube.captions.download(
       { id: pick.id, tfmt: 'srt' },
       { responseType: 'arraybuffer' }
@@ -211,13 +207,10 @@ async function fetchTranscriptViaYouTubeAPI(videoId) {
     return '';
   }
 }
-
-// A broad list of English variants we’ll try explicitly with the library.
 const EN_LANGS = [
   'en', 'en-US', 'en-GB', 'en-UK', 'en-CA', 'en-AU', 'en-NZ', 'en-IN', 'en-IE', 'en-SG', 'en-PH', 'en-ZA',
   'a.en', 'auto', 'auto-en'
 ];
-
 async function fetchTranscriptViaLib(videoId) {
   for (const lang of EN_LANGS) {
     try {
@@ -226,20 +219,16 @@ async function fetchTranscriptViaLib(videoId) {
         console.log(`✅ transcript via lib (${lang}) for`, videoId);
         return parts.map(p => p.text).join(' ').replace(/\s+/g, ' ');
       }
-    } catch {
-      // keep trying next lang
-    }
+    } catch { /* keep trying */ }
   }
   return '';
 }
-
 async function fetchTranscriptViaWatchPage(videoId) {
   const headers = {
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit(537.36) Chrome/124.0 Safari/537.36',
     'accept-language': 'en-US,en;q=0.9',
     'cookie': 'CONSENT=YES+1'
   };
-
   function extractPlayerResponse(html) {
     const key = 'ytInitialPlayerResponse';
     let i = html.indexOf(key);
@@ -248,25 +237,20 @@ async function fetchTranscriptViaWatchPage(videoId) {
     if (i === -1) return null;
     while (i < html.length && html[i] !== '{') i++;
     if (html[i] !== '{') return null;
-
     let depth = 0, j = i;
     while (j < html.length) {
       const ch = html[j++];
       if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) break;
-      }
+      else if (ch === '}') { depth--; if (depth === 0) break; }
     }
     const raw = html.slice(i, j);
     try { return JSON.parse(raw); } catch { return null; }
   }
-
   async function getTracksFrom(url) {
     const res = await fetch(url, { headers });
     if (!res.ok) return null;
     const html = await res.text();
-    if (/www\.youtube\.com\/consent|One more step|verify you are human|acknowledge/i.test(html)) return null;
+    if (/www\.youtube\.com\/consent|verify you are human|acknowledge/i.test(html)) return null;
 
     const pr = extractPlayerResponse(html);
     let tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -281,7 +265,6 @@ async function fetchTranscriptViaWatchPage(videoId) {
     }
     return Array.isArray(tracks) && tracks.length ? tracks : null;
   }
-
   const embedUrl = `https://www.youtube.com/embed/${videoId}?hl=en`;
   const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en&has_verified=1&bpctr=9999999999`;
 
@@ -304,6 +287,7 @@ async function fetchTranscriptViaWatchPage(videoId) {
 
     baseUrl = baseUrl.replace(/\\u0026/g, '&');
 
+    // Try json3, then TTML
     const jsonUrl = baseUrl.includes('fmt=') ? baseUrl : `${baseUrl}&fmt=json3`;
     let r = await fetch(jsonUrl, { headers });
     if (r.ok) {
@@ -335,39 +319,9 @@ async function fetchTranscriptViaWatchPage(videoId) {
     }
   }
 
-  // Final fallback: direct timedtext endpoints
-  for (const fmt of ['json3', 'ttml']) {
-    const url = `https://www.youtube.com/api/timedtext?lang=en&v=${encodeURIComponent(videoId)}&fmt=${fmt}`;
-    const r = await fetch(url, { headers });
-    if (!r.ok) continue;
-    const body = await r.text();
-
-    if (fmt === 'json3' && body.trim().startsWith('{')) {
-      try {
-        const data = JSON.parse(body);
-        const text = (data.events || [])
-          .map(ev => (ev.segs || []).map(s => s.utf8).join(''))
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (text) {
-          console.log('✅ transcript via timedtext json3 for', videoId);
-          return text;
-        }
-      } catch {}
-    } else if (fmt === 'ttml') {
-      const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (text) {
-        console.log('✅ transcript via timedtext ttml for', videoId);
-        return text;
-      }
-    }
-  }
-
   console.warn('No captionTracks in embed/watch/timedtext for', videoId);
   return '';
 }
-
 async function fetchTranscriptViaWhisper(videoId) {
   const work = path.join(os.tmpdir(), `yt-${videoId}-${Date.now()}`);
   await fs.mkdir(work, { recursive: true });
@@ -375,20 +329,16 @@ async function fetchTranscriptViaWhisper(videoId) {
   const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
   const audioPath = path.join(work, `${videoId}.m4a`);
 
-  const COOKIES = process.env.YT_COOKIES_PATH || ''; // path to a Netscape cookies.txt
+  const COOKIES = process.env.YT_COOKIES_PATH || '';
   const YTDLP_BIN = process.env.YTDLP_BIN || BIN_YTDLP;
   const WHISPER_BIN = process.env.WHISPER_BIN || BIN_WHISPER;
   const WHISPER_MODEL = process.env.WHISPER_MODEL || WHISPER_MODEL_PATH;
 
   const EXTRACTOR_ARGS = process.env.YTDLP_EXTRACTOR_ARGS || 'youtube:player_client=android,webpage=True';
-
   const args = [
-    '--no-playlist',
-    '--geo-bypass',
-    '--force-ipv4',
-    '--no-warnings',
+    '--no-playlist','--geo-bypass','--force-ipv4','--no-warnings',
     '--extractor-args', EXTRACTOR_ARGS,
-    '-x', '--audio-format', 'm4a',
+    '-x','--audio-format','m4a',
     '-o', audioPath,
     url
   ];
@@ -410,12 +360,8 @@ async function fetchTranscriptViaWhisper(videoId) {
     try { await fs.rm(work, { recursive: true, force: true }); } catch {}
   }
 }
-
-// Unified transcript getter (NOW with finance normalization + pacing)
+// Unified transcript getter (finance normalization)
 async function fetchTranscriptText(videoId) {
-  // small pause to avoid hammering any endpoint
-  if (FETCH_SLEEP_MS) await sleep(FETCH_SLEEP_MS);
-
   const fromApi = await fetchTranscriptViaYouTubeAPI(videoId);
   if (fromApi) return normalizeForFinance(fromApi).slice(0, 8000);
 
@@ -432,37 +378,23 @@ async function fetchTranscriptText(videoId) {
 }
 
 /* ============================================================
-   YOUTUBE FETCH (API or RSS) — NOW WITH PLAYLISTS + QUOTA RESILIENCE
+   YOUTUBE FETCH (API or RSS) — WITH PLAYLISTS + (optional) Shorts
    ============================================================ */
-function isQuotaErrorText(t='') {
-  return /quota/i.test(t) || /reason"\s*:\s*"quotaExceeded"/i.test(t);
-}
-
 async function youtube(endpoint, params) {
   if (!YT_API_KEY) throw new Error('YT_API_KEY missing (or set CHANNEL_ID to use RSS)');
   const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
   url.searchParams.set('key', YT_API_KEY);
   Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
   const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text();
-    if (isQuotaErrorText(body)) {
-      const err = new Error(body || 'quotaExceeded');
-      err.name = 'YouTubeQuotaError';
-      throw err;
-    }
-    throw new Error(body || `YouTube API error ${res.status}`);
-  }
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-
 async function resolveChannelIdFromHandle(handle) {
   const j = await youtube('search', { part: 'snippet', q: handle, type: 'channel', maxResults: '1' });
   const item = j.items?.[0];
   if (!item?.snippet?.channelId) throw new Error('Cannot resolve channel from handle');
   return item.snippet.channelId;
 }
-
 async function fetchRecentVideosAPI(channelId, max = 8) {
   const j = await youtube('search', { part: 'snippet', channelId, order: 'date', maxResults: String(max), type: 'video' });
   return (j.items || []).map(it => ({
@@ -473,7 +405,6 @@ async function fetchRecentVideosAPI(channelId, max = 8) {
     url: `https://youtu.be/${it.id.videoId}`
   }));
 }
-
 async function fetchRecentVideosRSS(channelId, max = 8) {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
   const res = await fetch(url);
@@ -514,72 +445,64 @@ async function fetchAllPlaylistsForChannel(channelId) {
       });
     }
     pageToken = j.nextPageToken || '';
-    if (FETCH_SLEEP_MS) await sleep(FETCH_SLEEP_MS);
   } while (pageToken);
   return found;
 }
-
-async function readPlaylistCache(pid) {
-  try {
-    const f = path.join(CACHE_DIR, `playlist-${pid}.json`);
-    const s = await fs.readFile(f, 'utf8');
-    return JSON.parse(s);
-  } catch { return null; }
-}
-async function writePlaylistCache(pid, items) {
-  try {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    const f = path.join(CACHE_DIR, `playlist-${pid}.json`);
-    await fs.writeFile(f, JSON.stringify({ items, cachedAt: new Date().toISOString() }, null, 2), 'utf8');
-  } catch {}
-}
-
 async function fetchPlaylistVideos(playlistId, maxItems = 25) {
   let pageToken = '';
   const items = [];
-  try {
-    do {
-      const j = await youtube('playlistItems', {
-        part: 'snippet,contentDetails',
-        playlistId,
-        maxResults: '50',
-        pageToken: pageToken || undefined
+  do {
+    const j = await youtube('playlistItems', {
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: '50',
+      pageToken: pageToken || undefined
+    });
+    for (const it of (j.items || [])) {
+      const vid = it.contentDetails?.videoId || it.snippet?.resourceId?.videoId;
+      if (!vid) continue;
+      items.push({
+        videoId: vid,
+        title: it.snippet?.title || '',
+        description: it.snippet?.description || '',
+        publishedAt: it.contentDetails?.videoPublishedAt || it.snippet?.publishedAt || '',
+        url: `https://youtu.be/${vid}`
       });
-      for (const it of (j.items || [])) {
-        const vid = it.contentDetails?.videoId || it.snippet?.resourceId?.videoId;
-        if (!vid) continue;
-        items.push({
-          videoId: vid,
-          title: it.snippet?.title || '',
-          description: it.snippet?.description || '',
-          publishedAt: it.contentDetails?.videoPublishedAt || it.snippet?.publishedAt || '',
-          url: `https://youtu.be/${vid}`
-        });
-      }
-      pageToken = j.nextPageToken || '';
-      if (FETCH_SLEEP_MS) await sleep(FETCH_SLEEP_MS);
-    } while (pageToken && items.length < maxItems);
-
-    const out = items
-      .sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt))
-      .slice(0, maxItems);
-
-    // cache on success
-    await writePlaylistCache(playlistId, out);
-    return out;
-  } catch (e) {
-    if (e?.name === 'YouTubeQuotaError' || isQuotaErrorText(String(e?.message||''))) {
-      console.warn(`⚠️ quotaExceeded while fetching playlist ${playlistId}; trying cache`);
-      const cached = await readPlaylistCache(playlistId);
-      if (cached?.items?.length) {
-        console.log(`✔ Using cached playlist ${playlistId} (${cached.items.length} items)`);
-        return cached.items;
-      }
-      console.warn(`✖ No cache for playlist ${playlistId}; returning empty.`);
-      return [];
     }
-    throw e;
-  }
+    pageToken = j.nextPageToken || '';
+  } while (pageToken && items.length < maxItems);
+
+  return items
+    .sort((a,b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+    .slice(0, maxItems);
+}
+// Optional: Shorts search (if you want to include Shorts that aren’t in the playlist)
+async function fetchShortsBySearch(channelId, maxItems = 50) {
+  if (!INCLUDE_SHORTS) return [];
+  let pageToken = '';
+  const out = [];
+  do {
+    const j = await youtube('search', {
+      part: 'snippet',
+      channelId,
+      type: 'video',
+      order: 'date',
+      maxResults: '50',
+      pageToken: pageToken || undefined,
+      videoDuration: 'short' // heuristic for shorts
+    });
+    for (const it of (j.items || [])) {
+      out.push({
+        videoId: it.id?.videoId,
+        title: it.snippet?.title || '',
+        description: it.snippet?.description || '',
+        publishedAt: it.snippet?.publishedAt || '',
+        url: `https://youtu.be/${it.id?.videoId}`
+      });
+    }
+    pageToken = j.nextPageToken || '';
+  } while (pageToken && out.length < maxItems);
+  return out.slice(0, maxItems);
 }
 
 /* ============================================================
@@ -602,7 +525,6 @@ function parseNumericTokens(s='') {
   }
   return out;
 }
-
 function appearsInTranscriptHuman(nRaw, transcript) {
   const want = parseNumericTokens(nRaw);
   if (!want.length) return false;
@@ -618,7 +540,6 @@ function appearsInTranscriptHuman(nRaw, transcript) {
     })
   );
 }
-
 async function spotPrices(symbols=[]) {
   if (!ALLOW_PRICE_LOOKUPS || !symbols.length) return {};
   const MAP = { BTC:'bitcoin', ETH:'ethereum', SOL:'solana', XRP:'ripple', ADA:'cardano', AVAX:'avalanche-2', LINK:'chainlink' };
@@ -636,7 +557,6 @@ async function spotPrices(symbols=[]) {
     return out;
   } catch { return {}; }
 }
-
 async function filterImplausibleLevels(long) {
   const syms = Array.from(new Set((long?.key_levels || []).map(l => (l.asset||'').toUpperCase())))
     .filter(s => TICKER_WHITELIST.has(s));
@@ -657,7 +577,6 @@ async function filterImplausibleLevels(long) {
 const STOP = new Set((
   'a,an,and,are,as,at,be,by,for,from,has,have,i,in,is,it,of,on,or,that,the,then,there,these,those,to,was,were,will,with,about,into,over,after,before,than,not,so,just,like,you,can,if,we,they,this,our'
 ).split(','));
-
 function tokenizeSentences(text) {
   return text
     .replace(/\s+/g, ' ')
@@ -705,9 +624,7 @@ function extractNumbers(text, limit = 40) {
     .map(m => m[1]);
 }
 function postFix(s='') {
-  return normalizeForFinance(
-    String(s || '').replace(/xxx/gi, '—')
-  );
+  return normalizeForFinance(String(s || '').replace(/xxx/gi, '—'));
 }
 
 async function summarizeFree(v, transcript) {
@@ -726,10 +643,7 @@ async function summarizeFree(v, transcript) {
     (transcript.match(/\b\d{2,5}(?:\.\d+)?\b/g) || []).slice(0, 6)
   ));
   let key_levels = levelCandidates.map(p => ({
-    asset: '',
-    level: p,
-    direction: '',
-    notes: ''
+    asset: '', level: p, direction: '', notes: ''
   }));
 
   const top8 = topKIndices(scores, 8);
@@ -746,7 +660,6 @@ async function summarizeFree(v, transcript) {
     const t = postFix(s);
     return t.length > 160 ? t.slice(0, 157) + '…' : t;
   });
-
   let long = {
     context: postFix(context),
     key_levels,
@@ -785,14 +698,12 @@ async function summarizeFree(v, transcript) {
 
   return { ...v, bullets, long };
 }
-
 async function summarizeWithOpenAI(v, transcript) {
   if (!transcript || transcript.trim().length < 200) {
     return { ...v, bullets: ['Transcript unavailable — summary skipped.'], long: { skipped: true } };
   }
 
   const ALLOWED_TICKERS = Array.from(TICKER_WHITELIST).join(', ');
-
   const SYSTEM_PROMPT = `
 You are a factual trading summarizer.
 • Only use tickers from this whitelist: ${ALLOWED_TICKERS}.
@@ -872,19 +783,15 @@ ${transcript.slice(0, 6000)}`;
     }
 
     long = await filterImplausibleLevels(long);
-
     return { ...v, bullets: cleanBullets, long };
   } catch (e) {
     console.warn('Summarization error:', e);
     return { ...v, bullets: ['Summary pending — processing error.'], long: { error: true } };
   }
 }
-
 async function summarizeItem(v) {
   const transcript = await fetchTranscriptText(v.videoId);
-  if (FREE_MODE || !ai) {
-    return await summarizeFree(v, transcript);
-  }
+  if (FREE_MODE || !ai) return await summarizeFree(v, transcript);
   return await summarizeWithOpenAI(v, transcript);
 }
 
@@ -894,7 +801,6 @@ async function summarizeItem(v) {
 function summaryHtml({ title, datePT, url, videoId, bullets, long }) {
   const metaDesc = (bullets || []).join(' • ').slice(0, 155);
   const og = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-
   const levels = Array.isArray(long?.key_levels) ? long.key_levels : [];
   const setups = Array.isArray(long?.setups) ? long.setups : [];
   const takeaways = Array.isArray(long?.takeaways) ? long.takeaways : [];
@@ -954,7 +860,6 @@ a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255
   }
 </article></div></body></html>`;
 }
-
 // Content page (tabs per playlist)
 function contentPageHtml(sections) {
   // sections: [{title, items:[{title,datePT,permalink,url,videoId,bullets}]}]
@@ -1021,217 +926,212 @@ document.querySelectorAll('.tab').forEach(btn=>{
 }
 
 /* ============================================================
-   MAIN
+   MAIN — with processed cache + per-run cap + index merge
    ============================================================ */
 (async function main() {
-  await fs.mkdir(CACHE_DIR, { recursive: true });
+  // Load processed cache
+  const processed = (await readJSONSafe(PROCESSED_FILE, {})) || {}; // { [videoId]: { summarizedAt, title, publishedAt, section? } }
 
-  // check last ID to skip duplicates (applies only when we use simple "recent" flow)
-  let lastId = '';
-  try { lastId = (await fs.readFile(OUT_LASTID, 'utf8')).trim(); } catch {}
-
-  // Resolve channelId (needed for either playlists or fallback)
+  // Resolve channelId (needed for playlists or fallback)
   let resolvedChannelId = CHANNEL_ID;
   if (!resolvedChannelId && YT_API_KEY) {
     resolvedChannelId = await resolveChannelIdFromHandle(CHANNEL_HANDLE);
   }
 
-  // Data “containers”
-  let sections = [];   // for content page tabs
-  const videoMap = new Map(); // videoId -> meta
-
-  const usingApi = Boolean(YT_API_KEY);
+  // Fetch playlists → sections
+  let sections = [];   // [{title, items:[{videoId,title,publishedAt,url}]}]
   let fetchedFromPlaylists = false;
 
-  // -------- Try PLAYLISTS (API + CACHE) --------
+  const usingApi = Boolean(YT_API_KEY);
   if (usingApi && resolvedChannelId) {
-    try {
-      const allPlaylists = await fetchAllPlaylistsForChannel(resolvedChannelId);
-      console.log(`📚 Found ${allPlaylists.length} playlists on channel`);
-      const targetSet = new Set(TARGET_PLAYLIST_TITLES.map(canonicalTitle));
+    const allPlaylists = await fetchAllPlaylistsForChannel(resolvedChannelId);
 
-      // map canonical title -> playlist meta
-      const pick = new Map();
-      for (const p of allPlaylists) {
-        const key = canonicalTitle(p.title);
-        if (targetSet.has(key)) pick.set(key, p);
-      }
+    // Choose target playlists by title
+    const want = new Map();
+    const targetSet = new Set(TARGET_PLAYLIST_TITLES.map(canonicalTitle));
+    for (const p of allPlaylists) {
+      const key = canonicalTitle(p.title);
+      if (targetSet.has(key)) want.set(key, { id: p.id, title: p.title });
+    }
 
-      const playlistSections = [];
-      for (const t of TARGET_PLAYLIST_TITLES) {
-        const key = canonicalTitle(t);
-        const meta = pick.get(key);
-        if (!meta) continue;
+    // Fetch videos per wanted playlist
+    for (const t of TARGET_PLAYLIST_TITLES) {
+      const meta = want.get(canonicalTitle(t));
+      if (!meta) continue;
+      const vids = await fetchPlaylistVideos(meta.id, MAX_PER_PLAYLIST);
+      console.log(`✔ Section "${meta.title}" via playlist (${vids.length} videos)`);
+      sections.push({ title: meta.title, items: vids });
+    }
 
-        const vids = await fetchPlaylistVideos(meta.id, MAX_PER_PLAYLIST);
-        console.log(`✔ Section "${meta.title}" via playlist (${vids.length} videos)`);
-        for (const v of vids) if (!videoMap.has(v.videoId)) videoMap.set(v.videoId, v);
-        playlistSections.push({ title: meta.title, items: vids });
-      }
-
-      if (playlistSections.length) {
-        sections = playlistSections;
-        fetchedFromPlaylists = true;
-      } else {
-        console.warn('⚠️ No target playlists resolved. Will attempt fallback.');
-      }
-    } catch (e) {
-      if (e?.name === 'YouTubeQuotaError' || isQuotaErrorText(String(e?.message||''))) {
-        console.warn('⚠️ Quota hit while listing playlists. Attempting cache/previous index fallback.');
-      } else {
-        console.warn('⚠️ Playlist discovery failed:', e.message || e);
-      }
-
-      // Try reconstruct sections from cache files (if any)
-      const cachedSections = [];
-      try {
-        const files = await fs.readdir(CACHE_DIR);
-        const pidFiles = files.filter(f => /^playlist-.*\.json$/.test(f));
-        for (const fname of pidFiles) {
-          const j = JSON.parse(await fs.readFile(path.join(CACHE_DIR, fname), 'utf8'));
-          const items = Array.isArray(j.items) ? j.items : [];
-          if (!items.length) continue;
-          // We don't know the title from cache alone; derive from filename suffix if present
-          cachedSections.push({ title: fname.replace(/^playlist-|\.json$/g, ''), items });
-          for (const it of items) if (!videoMap.has(it.videoId)) videoMap.set(it.videoId, it);
+    // Optional: Shorts via search (if enabled)
+    if (INCLUDE_SHORTS) {
+      const shorts = await fetchShortsBySearch(resolvedChannelId, SHORTS_MAX);
+      if (shorts.length) {
+        // If Shorts playlist exists, merge; else add as a new section
+        const ix = sections.findIndex(s => canonicalTitle(s.title) === 'shorts');
+        if (ix >= 0) {
+          const seen = new Set(sections[ix].items.map(i => i.videoId));
+          const merged = sections[ix].items.concat(shorts.filter(v => v.videoId && !seen.has(v.videoId)));
+          sections[ix].items = merged
+            .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt))
+            .slice(0, MAX_PER_PLAYLIST);
+        } else {
+          sections.push({
+            title: 'Shorts',
+            items: shorts
+              .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt))
+              .slice(0, MAX_PER_PLAYLIST)
+          });
         }
-      } catch {}
-
-      if (cachedSections.length) {
-        console.log(`✔ Using cached playlists (${cachedSections.length} sections)`);
-        sections = cachedSections;
-        fetchedFromPlaylists = true;
       }
     }
+
+    fetchedFromPlaylists = sections.length > 0;
   }
 
-  // -------- If playlists failed: try previous yt-index.json --------
+  // Fallback: recent videos if no playlists
   if (!fetchedFromPlaylists) {
-    try {
-      const prev = JSON.parse(await fs.readFile(OUT_INDEX, 'utf8'));
-      if (Array.isArray(prev.sections) && prev.sections.length) {
-        console.log('✔ Using previous yt-index.json sections as fallback');
-        sections = prev.sections;
-        for (const sec of sections) {
-          for (const it of (sec.items||[])) if (!videoMap.has(it.videoId)) videoMap.set(it.videoId, it);
-        }
-        fetchedFromPlaylists = true;
-      }
-    } catch {}
-  }
-
-  // -------- If still nothing & allowed: fall back to recent videos (RSS/API) --------
-  if (!fetchedFromPlaylists && ALLOW_RECENT_FALLBACK) {
     let items = [];
-    try {
-      if (CHANNEL_ID) {
-        items = await fetchRecentVideosRSS(CHANNEL_ID, MAX_ITEMS);
-      } else {
-        const channelId = resolvedChannelId || await resolveChannelIdFromHandle(CHANNEL_HANDLE);
-        items = await fetchRecentVideosAPI(channelId, MAX_ITEMS);
-      }
-    } catch (e) {
-      console.warn('Fallback recent videos failed:', e.message || e);
+    if (CHANNEL_ID) {
+      items = await fetchRecentVideosRSS(CHANNEL_ID, MAX_ITEMS);
+    } else {
+      const channelId = resolvedChannelId || await resolveChannelIdFromHandle(CHANNEL_HANDLE);
+      items = await fetchRecentVideosAPI(channelId, MAX_ITEMS);
     }
-
-    if (!items.length) {
-      const strictMsg = REQUIRE_PLAYLISTS_STRICT
-        ? 'No videos found and playlists required; aborting.'
-        : 'No videos found at all.';
-      throw new Error(strictMsg);
-    }
-
-    // Keep original “latest changed?” optimization
-    const newestId = items[0]?.videoId;
-    if (newestId && newestId === lastId) {
-      console.log('No new video since last run; skipping.');
-      process.exit(0);
-    }
-
+    if (!items.length) throw new Error('No videos found');
     sections = [{ title: 'All Videos', items }];
-    for (const v of items) videoMap.set(v.videoId, v);
   }
 
-  // -------- Summarize videos (cap per run) --------
-  const allVideos = Array.from(videoMap.values())
+  // Build global list of videos (dedup across sections), newest->oldest
+  const byId = new Map(); // videoId -> { ...video, sectionTitles: Set }
+  for (const sec of sections) {
+    for (const v of sec.items) {
+      if (!v?.videoId) continue;
+      if (!byId.has(v.videoId)) byId.set(v.videoId, { ...v, sectionTitles: new Set([sec.title]) });
+      else byId.get(v.videoId).sectionTitles.add(sec.title);
+    }
+  }
+  const allVideos = Array.from(byId.values())
     .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt));
 
-  const workset = allVideos.slice(0, Math.max(1, MAX_SUMMARIES_PER_RUN));
-  if (workset.length < allVideos.length) {
-    console.log(`ℹ️ Capping summaries this run: ${workset.length}/${allVideos.length}`);
+  // Determine which videos to summarize this run (skip already processed), apply cap
+  const toSummarize = allVideos.filter(v => !processed[v.videoId]).slice(0, MAX_SUMMARIES_PER_RUN);
+  if (toSummarize.length) {
+    console.log(`Will summarize up to ${toSummarize.length} new video(s) this run (cap ${MAX_SUMMARIES_PER_RUN}).`);
+  } else {
+    console.log('No new videos to summarize (processed cache up-to-date).');
   }
 
-  const summarized = [];
-  for (const v of workset) {
-    summarized.push(await summarizeItem(v));
-  }
-
-  // Per-video summary pages + section index items
+  // Summarize selected videos, update processed cache incrementally
+  const summarizedNow = [];
   await fs.mkdir(SUMMARIES_DIR, { recursive: true });
 
-  // Index by id for quick lookup
-  const sumById = new Map(summarized.map(s => [s.videoId, s]));
+  for (const v of toSummarize) {
+    const s = await summarizeItem(v);
+    summarizedNow.push(s);
 
-  // Create per-summary pages and index entries (grouped per section)
-  const indexSections = [];
-  for (const section of sections) {
-    const items = [];
-    for (const s of section.items) {
-      const sv = sumById.get(s.videoId);
-      // If this video wasn't summarized this run (due to per-run cap), skip writing a page for it now,
-      // but keep it in the list so older pages remain linked if they exist from previous runs.
-      if (!sv) continue;
-      const slug = `${toPTDate(sv.publishedAt)}-${slugify(sv.title)}`;
-      const permalink = `summaries/${slug}.html`;
-      const html = summaryHtml({
-        title: sv.title,
-        datePT: toPTDate(sv.publishedAt),
-        url: sv.url,
-        videoId: sv.videoId,
-        bullets: sv.bullets,
-        long: sv.long
-      });
-      await fs.writeFile(path.join(SUMMARIES_DIR, `${slug}.html`), html, 'utf8');
+    // Write per-video page immediately
+    const slug = `${toPTDate(s.publishedAt)}-${slugify(s.title)}`;
+    const permalink = `summaries/${slug}.html`;
+    const html = summaryHtml({
+      title: s.title,
+      datePT: toPTDate(s.publishedAt),
+      url: s.url,
+      videoId: s.videoId,
+      bullets: s.bullets,
+      long: s.long
+    });
+    await fs.writeFile(path.join(SUMMARIES_DIR, `${slug}.html`), html, 'utf8');
 
-      items.push({
-        title: sv.title,
-        datePT: toPTDate(sv.publishedAt),
-        url: sv.url,
-        videoId: sv.videoId,
-        bullets: sv.bullets,
-        permalink
-      });
-    }
-    // If no items from this section were summarized in this run, keep the section but with 0 new items;
-    // the content page will still show any newly summarized ones from other sections.
-    items.sort((a,b)=> new Date(b.datePT) - new Date(a.datePT));
-    indexSections.push({ title: section.title, items });
+    // Mark processed
+    processed[s.videoId] = {
+      summarizedAt: new Date().toISOString(),
+      title: s.title,
+      publishedAt: s.publishedAt,
+      // store one of the section titles (first) for convenience
+      section: Array.from(byId.get(s.videoId)?.sectionTitles || [])[0] || ''
+    };
+    await writeJSON(PROCESSED_FILE, processed); // flush so partial progress is saved
   }
 
-  // latest.json from newest summarized in this run (if any)
-  const newest = summarized
+  // Load existing index (if any) to reuse prior summaries without reprocessing
+  const existingIndex = await readJSONSafe(OUT_INDEX, { sections: [] });
+  const existingByVideoId = new Map(); // videoId -> {item, sectionTitle}
+  for (const sec of (existingIndex.sections || [])) {
+    for (const it of (sec.items || [])) {
+      if (it?.videoId) existingByVideoId.set(it.videoId, { item: it, sectionTitle: sec.title });
+    }
+  }
+
+  // Combine: current-run summaries + existing items
+  const newById = new Map(summarizedNow.map(s => [s.videoId, s]));
+  const latestCandidateItems = [];
+
+  // Build fresh grouped index following *current* playlist grouping.
+  const indexSections = [];
+  for (const sec of sections) {
+    const items = [];
+    for (const v of sec.items) {
+      const nowSum = newById.get(v.videoId);
+      if (nowSum) {
+        const slug = `${toPTDate(nowSum.publishedAt)}-${slugify(nowSum.title)}`;
+        items.push({
+          title: nowSum.title,
+          datePT: toPTDate(nowSum.publishedAt),
+          url: nowSum.url,
+          videoId: nowSum.videoId,
+          bullets: nowSum.bullets,
+          permalink: `summaries/${slug}.html`
+        });
+        latestCandidateItems.push({ ...items[items.length - 1], publishedAt: nowSum.publishedAt });
+      } else {
+        // reuse from existing index if available
+        const prev = existingByVideoId.get(v.videoId);
+        if (prev?.item) {
+          items.push(prev.item);
+          latestCandidateItems.push({ ...prev.item, publishedAt: v.publishedAt });
+        }
+      }
+    }
+    // keep order newest→oldest
+    const sorted = items.slice().sort((a,b)=> new Date(b.datePT) - new Date(a.datePT));
+    indexSections.push({ title: sec.title, items: sorted });
+  }
+
+  // Compute latest.json from the newest item we actually have a summary for (new or existing)
+  const newestItem = latestCandidateItems
     .slice()
     .sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt))[0];
 
-  const latest = newest
-    ? { title: newest.title, datePT: toPTDate(newest.publishedAt), url: newest.url, videoId: newest.videoId, bullets: newest.bullets }
+  const latest = newestItem
+    ? { title: newestItem.title, datePT: newestItem.datePT, url: byId.get(newestItem.videoId)?.url || newestItem.url, videoId: newestItem.videoId, bullets: newestItem.bullets || [] }
     : { title: '', datePT: '', url: '', videoId: '', bullets: [] };
 
   // Write grouped index JSON + content page
-  await fs.writeFile(OUT_INDEX, JSON.stringify({ sections: indexSections }, null, 2), 'utf8');
+  await writeJSON(OUT_INDEX, { sections: indexSections });
   await fs.writeFile(OUT_CONTENT_PAGE, contentPageHtml(indexSections), 'utf8');
 
-  // Maintain lastID optimization: use newest overall video (from any set we summarized)
-  if (newest) await fs.writeFile(OUT_LASTID, newest.videoId || '', 'utf8');
+  // Maintain lastID optimization: write newest summarized videoId if we summarized any this run
+  if (summarizedNow.length) {
+    const newestSummarized = summarizedNow.slice().sort((a,b)=> new Date(b.publishedAt) - new Date(a.publishedAt))[0];
+    await fs.writeFile(OUT_LASTID, newestSummarized.videoId || '', 'utf8');
+  }
 
-  // Also keep latest.json for any external consumers
-  await fs.writeFile(OUT_LATEST, JSON.stringify(latest, null, 2), 'utf8');
+  // Also keep latest.json for homepage consumption
+  await writeJSON(OUT_LATEST, latest);
 
+  // Log stats
+  const totalSummariesNow = indexSections.reduce((n, s) => n + s.items.length, 0);
+  console.log(
+    'Processed cache size:', Object.keys(processed).length,
+    '| New summaries this run:', summarizedNow.length,
+    '| Total summaries available:', totalSummariesNow
+  );
   console.log(
     'Wrote latest.json, yt-index.json (grouped), summaries.html, and',
-    summarized.length,
-    'summary pages (',
-    fetchedFromPlaylists ? 'Playlists (API/cache)' : (CHANNEL_ID ? 'RSS fallback' : 'API recent'),
+    summarizedNow.length,
+    'new summary pages (',
+    fetchedFromPlaylists ? 'via Playlists+API' : (CHANNEL_ID ? 'via RSS' : 'via API recent'),
     ').',
     FREE_MODE ? 'Mode: FREE (rule-based summarizer)' : 'Mode: OpenAI summarizer',
     ALLOW_PRICE_LOOKUPS ? '(price sanity: ON)' : '(price sanity: OFF)'
