@@ -1,87 +1,118 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Video Summaries — syndotc™</title>
-<link rel="icon" href="favicon.ico">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><title>Video Summaries</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="./favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6;margin:0}
-  .container{max-width:1120px;margin:0 auto;padding:2rem 1.25rem}
-  .grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-  .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease}
-  .card:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
-  .thumb{aspect-ratio:16/9;background:#0f1016;border-bottom:1px solid rgba(255,255,255,.08)}
-  .thumb img{width:100%;height:100%;object-fit:cover}
-  .body{padding:1rem 1rem 1.25rem}
-  a{color:#00ffd1;text-decoration:none}
-  .muted{color:#9aa3b2}
+body{background:#0b0c10;color:#fff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6;margin:0}
+.container{max-width:1100px;margin:0 auto;padding:2rem 1.25rem}
+h1{font-size:2rem;margin:0 0 1rem}
+.tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.tab{background:transparent;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:.4rem .9rem;cursor:pointer}
+.tab.active{background:rgba(255,255,255,.1)}
+.pane{display:none}
+.pane.show{display:block}
+.grid{display:grid;grid-template-columns:1fr;gap:1rem}
+@media(min-width:760px){.grid{grid-template-columns:repeat(2,1fr)}}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:1rem}
+.thumb{aspect-ratio:16/9;border-radius:12px;overflow:hidden;margin-bottom:.5rem}
+.thumb img{display:block;width:100%;height:100%;object-fit:cover}
+p.meta{color:#9aa3b2;margin:.25rem 0 .5rem}
+a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.35rem .65rem;color:#fff;text-decoration:none;margin-left:.25rem}
+ul{color:#cbd2dd}
 </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Video Summaries</h1>
-    <p id="status" class="muted">Loading…</p>
-    <div id="list" class="grid"></div>
-  </div>
-
+</head><body>
+<div class="container">
+  <h1>Video Summaries</h1>
+  <div class="tabs"><button class="tab active" data-tab="tab-0">All Videos (10)</button></div>
+  
+    <div class="pane show" id="tab-0">
+      <div class="grid">
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/mPiJsbjPQKQ/hqdefault.jpg" alt="Live Stream - Daily Close" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Live Stream - Daily Close</h3>
+            <p class="meta">2025-10-21 · <a class="btn" href="https://www.youtube.com/watch?v=mPiJsbjPQKQ" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-21-live-stream-daily-close.html">Summary</a></p>
+            <ul><li>Transcript unavailable — summary skipped.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/Gbyg4Yag10I/hqdefault.jpg" alt="Crypto Daily Update | 21/10/2025 - Confused Yet? Price seems to be!" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 21/10/2025 - Confused Yet? Price seems to be!</h3>
+            <p class="meta">2025-10-21 · <a class="btn" href="https://www.youtube.com/watch?v=Gbyg4Yag10I" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-21-crypto-daily-update-21-10-2025-confused-yet-price-seems-to-be.html">Summary</a></p>
+            <ul><li>SOL and BTC are experiencing sideways movement with uncertainty in market direction.</li><li>Key level for SOL is 204, while BTC may revisit 103 or higher levels.</li><li>Shorts are prevalent, but potential for upward movement exists.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/EFIUficzoqk/hqdefault.jpg" alt="Crypto Daily Update | 20/10/2025 - Support getting reclaimed." style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 20/10/2025 - Support getting reclaimed.</h3>
+            <p class="meta">2025-10-20 · <a class="btn" href="https://www.youtube.com/watch?v=EFIUficzoqk" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-20-crypto-daily-update-20-10-2025-support-getting-reclaimed.html">Summary</a></p>
+            <ul><li>BTC and SOL show potential for movement between levels due to built-up liquidity.</li><li>Key levels for SOL are aroundxwith bearish sentiment growing.</li><li>Market reactions may be influenced by upcoming financial news.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/EP2WZAAlQHM/hqdefault.jpg" alt="Crypto Daily Update | 19/10/2025 - Are Key Levels Getting Recovered?" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 19/10/2025 - Are Key Levels Getting Recovered?</h3>
+            <p class="meta">2025-10-19 · <a class="btn" href="https://www.youtube.com/watch?v=EP2WZAAlQHM" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-19-crypto-daily-update-19-10-2025-are-key-levels-getting-recovered.html">Summary</a></p>
+            <ul><li>Liquidity is building up for SOL and BTC, with potential volatility expected due to prime day tomorrow.</li><li>Key levels for BTC are around 104-105, while SOL's daily target has been hit.</li><li>Market sentiment is mixed, with increasing bearishness over the last week.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/CjgCwsycEdA/hqdefault.jpg" alt="Crypto Daily Update | 18/10/2025 - Key Levels for Today &amp;amp; Weekly Close" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 18/10/2025 - Key Levels for Today &amp;amp; Weekly Close</h3>
+            <p class="meta">2025-10-18 · <a class="btn" href="https://www.youtube.com/watch?v=CjgCwsycEdA" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-18-crypto-daily-update-18-10-2025-key-levels-for-today-amp-weekly-close.html">Summary</a></p>
+            <ul><li>BTC needs to close overxfor a bullish outlook.</li><li>SOL's range isxs to mid-xs, targetingxand above.</li><li>Key levels for SOL includexfor potential upward movement.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/m_RgvFtoNsw/hqdefault.jpg" alt="Crypto Daily Update | 17/10/2025 - Is this fake? Big dump coming? SOL &amp;amp; BTC telling different Story" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 17/10/2025 - Is this fake? Big dump coming? SOL &amp;amp; BTC telling different Story</h3>
+            <p class="meta">2025-10-17 · <a class="btn" href="https://www.youtube.com/watch?v=m_RgvFtoNsw" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-17-crypto-daily-update-17-10-2025-is-this-fake-big-dump-coming-sol-amp-btc-telling-.html">Summary</a></p>
+            <ul><li>BTC is at a critical level, with potential for a significant move.</li><li>SOL has found high time frame support but is dependent on BTC's performance.</li><li>Key levels to watch include 16707 and 17409 for BTC.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/E_MBCJqwKWQ/hqdefault.jpg" alt="Crypto Daily Update | 16/10/2025 - Looking Bearish" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 16/10/2025 - Looking Bearish</h3>
+            <p class="meta">2025-10-16 · <a class="btn" href="https://www.youtube.com/watch?v=E_MBCJqwKWQ" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-16-crypto-daily-update-16-10-2025-looking-bearish.html">Summary</a></p>
+            <ul><li>SOL is expected to test the 170s with potential for a bounce.</li><li>BTC shows bearish signs but has support around 16707.</li><li>Market conditions are uncertain; liquidity is stacked to the upside.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/FhTgDuogAIM/hqdefault.jpg" alt="Crypto Daily Update | 15/10/2025 - Even I'm Confused" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 15/10/2025 - Even I'm Confused</h3>
+            <p class="meta">2025-10-15 · <a class="btn" href="https://www.youtube.com/watch?v=FhTgDuogAIM" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-15-crypto-daily-update-15-10-2025-even-i-m-confused.html">Summary</a></p>
+            <ul><li>SOL has potential upside towards 214, while BTC may revisit 107.</li><li>Key support levels for SOL range from 170s to 189.</li><li>Market compression indicates possible breakout direction is uncertain.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/ZMpMvlQG7zE/hqdefault.jpg" alt="Watch for this 2D Btc candle ! 120k soon ? #crypto #trading #bitcoin #tradingstrategy #investing" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Watch for this 2D Btc candle ! 120k soon ? #crypto #trading #bitcoin #tradingstrategy #investing</h3>
+            <p class="meta">2025-10-15 · <a class="btn" href="https://www.youtube.com/shorts/ZMpMvlQG7zE" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-15-watch-for-this-2d-btc-candle-120k-soon-crypto-trading-bitcoin-tradingstrategy-in.html">Summary</a></p>
+            <ul><li>Potential bounce off trend line targeting 120 level.</li><li>Stop loss can be placed under break levels.</li><li>Immediate bounce expected upon touching break levels.</li></ul>
+          </article>
+        
+          <article class="card">
+            <div class="thumb"><img src="https://img.youtube.com/vi/cUuc0o0h65o/hqdefault.jpg" alt="Crypto Daily Update | 14/10/2025 - Can you trust this bounce yet?" style="width:100%;height:auto;border:0"/></div>
+            <h3 style="margin:.5rem 0">Crypto Daily Update | 14/10/2025 - Can you trust this bounce yet?</h3>
+            <p class="meta">2025-10-14 · <a class="btn" href="https://www.youtube.com/watch?v=cUuc0o0h65o" target="_blank" rel="noopener">Watch</a> · <a class="btn" href="summaries/2025-10-14-crypto-daily-update-14-10-2025-can-you-trust-this-bounce-yet.html">Summary</a></p>
+            <ul><li>SOL and BTC are experiencing volatility due to market close.</li><li>Current market conditions suggest an open book for both assets.</li><li>Key levels for SOL and BTC indicate potential upward movement.</li></ul>
+          </article>
+        
+      </div>
+    </div>
+  
+</div>
 <script>
-(async function(){
-  const status = document.getElementById('status');
-  try {
-    const res = await fetch('yt-index.json', { cache:'no-store' });
-    if (!res.ok) throw new Error('Failed to load yt-index.json: ' + res.status);
-    const index = await res.json();
-
-    // Flatten both formats ({items:[]} OR {sections:[{items:[]}]})
-    let items = [];
-    if (Array.isArray(index.items)) {
-      items = index.items.slice();
-    } else if (Array.isArray(index.sections)) {
-      index.sections.forEach(s => {
-        if (Array.isArray(s.items)) items = items.concat(s.items);
-      });
-    }
-
-    // Sort newest→oldest by datePT (YYYY-MM-DD)
-    const parseISO = s => {
-      if (!s) return 0;
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
-      if (m) return new Date(+m[1], +m[2]-1, +m[3]).getTime();
-      const t = Date.parse(s);
-      return isNaN(t) ? 0 : t;
-    };
-    items.sort((a,b)=>parseISO(b.datePT)-parseISO(a.datePT));
-
-    const list = document.getElementById('list');
-    list.innerHTML = '';
-
-    if (!items.length) {
-      status.textContent = 'No summaries yet.';
-      return;
-    }
-
-    status.remove();
-
-    items.forEach(v=>{
-      const a = document.createElement('a');
-      a.href = v.permalink;
-      a.className = 'card';
-      a.innerHTML =
-        '<div class="thumb"><img src="https://img.youtube.com/vi/'+v.videoId+'/hqdefault.jpg" alt="'+(v.title||'')+'" loading="lazy"></div>'+
-        '<div class="body"><h3>'+ (v.title||'') +'</h3>'+
-        '<p class="muted">'+(v.datePT||'')+'</p>'+
-        '<p style="color:#cbd2dd">'+((v.bullets||[]).join(' · '))+'</p></div>';
-      list.appendChild(a);
-    });
-  } catch(e) {
-    console.warn(e);
-    status.textContent = 'Could not load summaries.';
-  }
-})();
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(p=>p.classList.remove('show'));
+    btn.classList.add('active');
+    const id = btn.getAttribute('data-tab');
+    document.getElementById(id).classList.add('show');
+  });
+});
 </script>
-</body>
-</html>
+</body></html>
