@@ -1,6 +1,7 @@
 name: Build YouTube TLDRs
 on:
   schedule:
+    # Run twice nightly (UTC) to catch late uploads
     - cron: "0 2 * * *"
     - cron: "0 3 * * *"
   workflow_dispatch: {}
@@ -18,7 +19,7 @@ jobs:
         with:
           node-version: 20
 
-      # (Optional) Whisper fallback – keep if you still want offline STT when captions truly don't exist
+      # (Optional) Whisper fallback – retain if you want offline STT when captions truly don't exist
       - name: Install ffmpeg and yt-dlp
         run: |
           sudo apt-get update
@@ -36,7 +37,8 @@ jobs:
         run: |
           npm i openai@4 youtube-transcript googleapis
 
-      - name: Sanity check YouTube key (optional if using RSS)
+      # Quick sanity ping so we fail early if the API key is missing/invalid
+      - name: Sanity check YouTube key
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: |
@@ -44,19 +46,33 @@ jobs:
 
       - name: Run builder
         env:
-          # --- OpenAI summarizer (omit if FREE_MODE=1) ---
+          # --- Summarizer (omit OPENAI_API_KEY if you prefer FREE_MODE=1) ---
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FREE_MODE: "0"                         # set to "1" to use rule-based, $0 summaries
 
-          # --- Channel discovery ---
+          # --- Channel (either HANDLE or CHANNEL_ID is fine) ---
+          CHANNEL_HANDLE: "@Syn.Trades"
           CHANNEL_ID: "UCZYoGap4Hbtzfpz0V3HtkYg"
-          # YT_API_KEY: ${{ secrets.YT_API_KEY }}   # optional; not required for captions
+
+          # --- YouTube Data API (REQUIRED for playlists & shorts search) ---
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
 
           # --- Site/config ---
           SITE_URL: "https://JoyBoy92Codes.github.io/syndotcwebsite/"
           SITE_TZ: "America/Los_Angeles"
+
+          # Fallback only: used if playlists fail and we revert to "recent videos"
           MAX_ITEMS: "10"
 
-          # --- OAuth for official captions (REQUIRED for reliable captions) ---
+          # Playlists/Shorts caps (raise if you want more)
+          MAX_PER_PLAYLIST: "100"
+          INCLUDE_SHORTS: "1"
+          SHORTS_MAX: "100"
+
+          # Optional sanity filter for price-like levels inside summaries
+          ALLOW_PRICE_LOOKUPS: "0"
+
+          # --- OAuth for official captions (recommended for reliability) ---
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
@@ -72,5 +88,5 @@ jobs:
           git config user.name "yt-bot"
           git config user.email "yt-bot@users.noreply.github.com"
           git add -A
-          git commit -m "chore: update latest.json, yt-index.json, summaries" || echo "No changes"
+          git commit -m "chore: refresh TLDRs (latest.json, yt-index.json, summaries/)" || echo "No changes"
           git push
