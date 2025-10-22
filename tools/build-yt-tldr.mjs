@@ -1095,8 +1095,12 @@ document.querySelectorAll('.tab').forEach(btn=>{
     ? { title: newest.title, datePT: toPTDate(newest.publishedAt), url: newest.url, videoId: newest.videoId, bullets: newest.bullets }
     : { title: '', datePT: '', url: '', videoId: '', bullets: [] };
 
+  // Build flat items list for backward compatibility
+  const flatItems = indexSections.flatMap(s => s.items)
+    .sort((a,b)=> new Date(b.datePT) - new Date(a.datePT));
+
   // Write grouped index JSON + content page
-  await fs.writeFile(OUT_INDEX, JSON.stringify({ sections: indexSections }, null, 2), 'utf8');
+  await fs.writeFile(OUT_INDEX, JSON.stringify({ sections: indexSections, items: flatItems }, null, 2), 'utf8');
   await fs.writeFile(OUT_CONTENT_PAGE, contentPageHtml(indexSections), 'utf8');
 
   // Maintain lastID optimization: use newest overall video
@@ -1106,7 +1110,7 @@ document.querySelectorAll('.tab').forEach(btn=>{
   await fs.writeFile(OUT_LATEST, JSON.stringify(latest, null, 2), 'utf8');
 
   console.log(
-    'Wrote latest.json, yt-index.json (grouped), summaries.html, and',
+    'Wrote latest.json, yt-index.json (grouped + flat items), summaries.html, and',
     summarized.length,
     'summary pages (',
     fetchedFromPlaylists ? 'via Playlists+API' : (CHANNEL_ID ? 'via RSS' : 'via API recent'),
