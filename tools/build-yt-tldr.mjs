@@ -21,7 +21,7 @@ const CHANNEL_HANDLE  = process.env.CHANNEL_HANDLE || '@Syn.Trades';
 const CHANNEL_ID      = process.env.CHANNEL_ID || ''; // optional: if provided, use RSS (no API)
 const SITE_URL        = (process.env.SITE_URL || '').replace(/\/$/, '');
 const SITE_TZ         = process.env.SITE_TZ || 'America/Los_Angeles';
-const MAX_ITEMS       = Number(process.env.MAX_ITEMS || 10);
+const MAX_ITEMS       = Number(process.env.MAX_ITEMS || 15);
 
 // OAuth env for official captions
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || '';
@@ -29,9 +29,9 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN || '';
 
 // Offline STT fallback config
-const BIN_YTDLP       = process.env.YTDLP_BIN   || 'yt-dlp';
-const BIN_WHISPER     = process.env.WHISPER_BIN || 'whisper-cpp'; // some builds name the binary 'main'
-const WHISPER_MODEL   = process.env.WHISPER_MODEL || 'models/ggml-base.en.bin'; // e.g., 'models/ggml-small.en.bin'
+const BIN_YTDLP         = process.env.YTDLP_BIN   || 'yt-dlp';
+const BIN_WHISPER       = process.env.WHISPER_BIN || 'whisper-cpp'; // some builds name the binary 'main'
+const WHISPER_MODEL_PATH= process.env.WHISPER_MODEL || 'models/ggml-base.en.bin'; // e.g., 'models/ggml-small.en.bin'
 
 // Summarization model if using OpenAI
 const OPENAI_MODEL    = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -307,7 +307,7 @@ async function fetchTranscriptViaWhisper(videoId) {
   const COOKIES = process.env.YT_COOKIES_PATH || ''; // path to a Netscape cookies.txt
   const YTDLP_BIN = process.env.YTDLP_BIN || BIN_YTDLP;
   const WHISPER_BIN = process.env.WHISPER_BIN || BIN_WHISPER;
-  const WHISPER_MODEL = process.env.WHISPER_MODEL || WHISPER_MODEL;
+  const WHISPER_MODEL = process.env.WHISPER_MODEL || WHISPER_MODEL_PATH;
 
   const EXTRACTOR_ARGS = process.env.YTDLP_EXTRACTOR_ARGS || 'youtube:player_client=android,webpage=True';
 
@@ -470,11 +470,13 @@ async function summarizeFree(v, transcript) {
     return { ...v, bullets: ['Transcript unavailable — summary skipped.'], long: { skipped: true } };
   }
   const scores = scoreSentences(sentences);
-  const top3 = topKIndices(scores, 3).map(i => sentences[i]);
+  const top3Idx = topKIndices(scores, 3);
+  const top3 = top3Idx.map(i => sentences[i]);
 
   const contextIdx = topKIndices(scores, Math.min(1, sentences.length))[0] ?? 0;
   const context = sentences[Math.max(0, contextIdx)];
 
+  // price-ish levels (keep a few)
   const levelCandidates = Array.from(new Set(
     (transcript.match(/\b\d{2,5}(?:\.\d+)?\b/g) || []).slice(0, 6)
   ));
@@ -485,20 +487,41 @@ async function summarizeFree(v, transcript) {
     notes: ''
   }));
 
-  const moreIdx = topKIndices(scores, 6).filter(i => !top3.includes(sentences[i]));
-  const takeaways = moreIdx.slice(0, 4).map(i => sentences[i]);
-  const evidence = top3.slice(0, 2).map(q => ({ quote: q.slice(0, 160), ts: '' }));
+  // more sentences for takeaways + details
+  const top8 = topKIndices(scores, 8);
+  const remainder = top8.filter(i => !top3Idx.includes(i));
+  const takeaways = remainder.slice(0, 4).map(i => sentences[i]);
+
+  // "Notable Details": grab 3–6 specifics not already used
+  const used = new Set([...top3, ...takeaways]);
+  const details = sentences
+    .filter(s => !used.has(s))
+    .filter(s => /(\bBTC\b|\bETH\b|\bSOL\b|\bSPY\b|\bQQQ\b|\bUSD\b|\bDXY\b|\bVIX\b|\d)/.test(s))
+    .slice(0, 6);
+
+  // Cleanup (tickers/xxx)
+  const fix = s =>
+    String(s || '')
+      .replace(/\bSoul\b/g, 'SOL')
+      .replace(/\bSOUL\b/g, 'SOL')
+      .replace(/\bEeth\b/gi, 'ETH')
+      .replace(/xxx/gi, '—');
+
+  const bullets = top3.map(s => {
+    const t = fix(s);
+    return t.length > 160 ? t.slice(0, 157) + '…' : t;
+  });
 
   return {
     ...v,
-    bullets: top3.map(s => s.length > 160 ? s.slice(0, 157) + '…' : s),
+    bullets,
     long: {
-      context,
+      context: fix(context),
       key_levels,
       setups: [],
-      takeaways,
+      takeaways: takeaways.map(fix),
       catalysts: [],
-      evidence
+      notable_details: details.map(fix)
     }
   };
 }
@@ -510,20 +533,23 @@ async function summarizeWithOpenAI(v, transcript) {
 
   const numTokens = extractNumbers(transcript, 200);
 
-  const prompt = `You are a factual trading summarizer.
-You MUST write only what appears in the transcript—never infer or guess.
-Copy numbers exactly as they appear (including k/M/%). If uncertain, omit.
-Return JSON:
+  const SYSTEM_PROMPT = `
+You are a factual trading summarizer.
+Keep all asset tickers exactly as they appear (e.g., SOL, BTC, ETH).
+Never replace tickers with English words (e.g., do not write "Soul").
+If numeric data is unclear, omit or say "unspecified"—never use 'xxx'.
+Be concise, precise, and faithful to the transcript.`;
 
+  const prompt = `Return JSON:
 {
   "tldr": ["2–3 concise bullets (<=60 words total)"],
   "long": {
-    "context": "1–2 sentences of context",
+    "context": "2–4 sentences of context",
     "key_levels": [{"asset":"","level":"","direction":"support|resistance|pivot","notes":""}],
     "setups": [{"name":"","thesis":"","trigger":"","invalidation":"","targets":""}],
     "takeaways": ["3–6 concise bullets"],
     "catalysts": ["FOMC, CPI, earnings, etc if mentioned"],
-    "evidence": [{"quote":"exact phrase from transcript","ts":"00:00:00"}]
+    "notable_details": ["3–6 specific, actionable details not already repeated in TL;DR—e.g., precise levels, timeframe mentions, indicators used, risk notes, assets/tickers referenced, tools or sources mentioned"]
   }
 }
 
@@ -533,29 +559,61 @@ ${transcript.slice(0, 6000)}`;
   try {
     const res = await ai.chat.completions.create({
       model: OPENAI_MODEL,
-      temperature: 0.1,
+      temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: 'Be precise. Only describe what the transcript explicitly states.' },
+        { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: prompt }
       ]
     });
 
-    const data = JSON.parse(res.choices[0].message.content || '{}');
+    let data = {};
+    try { data = JSON.parse(res.choices[0].message.content || '{}'); } catch {}
+
+    // Parse sections
     const tldr = Array.isArray(data.tldr) ? data.tldr.slice(0, 3) : [];
     const long = data.long || {};
+    long.notable_details = Array.isArray(long.notable_details) ? long.notable_details.slice(0, 6) : [];
 
-    const numbersInText = (tldr.join(' ') + ' ' + JSON.stringify(long))
+    // --- Post-processing cleanup (tickers, placeholders) ---
+    const fix = s =>
+      String(s || '')
+        .replace(/\bSoul\b/g, 'SOL')
+        .replace(/\bSOUL\b/g, 'SOL')
+        .replace(/\bEeth\b/gi, 'ETH')
+        .replace(/xxx/gi, '—');
+
+    const cleanBullets = tldr.map(fix);
+    if (long?.context) long.context = fix(long.context);
+    if (Array.isArray(long.takeaways)) long.takeaways = long.takeaways.map(fix);
+    if (Array.isArray(long.key_levels)) long.key_levels = long.key_levels.map(l => ({ ...l, asset: fix(l.asset || '') }));
+    if (Array.isArray(long.catalysts)) long.catalysts = long.catalysts.map(fix);
+    if (Array.isArray(long.notable_details)) long.notable_details = long.notable_details.map(fix);
+
+    // Number safety: ensure any numbers the model used appear in transcript
+    const numbersInText = (cleanBullets.join(' ') + ' ' + JSON.stringify(long))
       .match(/\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*[kKmMbB%]?)\b/g) || [];
     const appears = n => numTokens.some(tok => tok.toLowerCase() === n.toLowerCase());
     const hasUnseen = numbersInText.some(n => !appears(n));
 
     if (hasUnseen) {
-      const scrub = s => s.replace(/\d/g, 'x');
-      return { ...v, bullets: tldr.map(scrub), long: { ...long, note: 'Numerical details scrubbed — mismatch with transcript.' } };
+      const scrub = s => String(s).replace(/\d/g, 'x');
+      return {
+        ...v,
+        bullets: cleanBullets.map(scrub),
+        long: {
+          ...long,
+          context: scrub(long.context || ''),
+          takeaways: (long.takeaways || []).map(scrub),
+          catalysts: (long.catalysts || []).map(scrub),
+          key_levels: (long.key_levels || []).map(kl => ({ ...kl, level: scrub(kl.level || ''), notes: scrub(kl.notes || '') })),
+          notable_details: (long.notable_details || []).map(scrub),
+          note: 'Numerical details scrubbed — mismatch with transcript.'
+        }
+      };
     }
 
-    return { ...v, bullets: tldr, long };
+    return { ...v, bullets: cleanBullets, long };
   } catch (e) {
     console.warn('Summarization error:', e);
     return { ...v, bullets: ['Summary pending — processing error.'], long: { error: true } };
@@ -581,7 +639,7 @@ function summaryHtml({ title, datePT, url, videoId, bullets, long }) {
   const setups = Array.isArray(long?.setups) ? long.setups : [];
   const takeaways = Array.isArray(long?.takeaways) ? long.takeaways : [];
   const catalysts = Array.isArray(long?.catalysts) ? long.catalysts : [];
-  const evidence = Array.isArray(long?.evidence) ? long.evidence : [];
+  const notableDetails = Array.isArray(long?.notable_details) ? long.notable_details : [];
 
   const levelsHtml = levels.length
     ? `<table style="width:100%;border-collapse:collapse;margin-top:.5rem">
@@ -593,11 +651,6 @@ function summaryHtml({ title, datePT, url, videoId, bullets, long }) {
     ? `<ul>${setups.map(s => `<li><strong>${esc(s.name||'')}</strong> — ${esc(s.thesis||'')}
         <br><em>Trigger:</em> ${esc(s.trigger||'')} · <em>Invalidation:</em> ${esc(s.invalidation||'')} · <em>Targets:</em> ${esc(s.targets||'')}</li>`).join('')}</ul>`
     : '<p style="color:#9aa3b2">No explicit setups.</p>';
-
-  const evidenceHtml = evidence.length
-    ? `<h3>Evidence (from transcript)</h3><ul>${evidence.map(e =>
-        `<li><em>${esc(e.ts||'')}</em> — “${esc(e.quote||'')}”</li>`).join('')}</ul>`
-    : '';
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><title>${esc(title)} — Video Summary</title>
@@ -631,7 +684,12 @@ a.btn{display:inline-flex;gap:.5rem;align-items:center;border:1px solid rgba(255
   <h3>Setups</h3>${setupsHtml}
   <h3>Takeaways</h3>${takeaways.length ? `<ul>${takeaways.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p style="color:#9aa3b2">—</p>'}
   ${catalysts.length ? `<h3>Catalysts</h3><p>${esc(catalysts.join(' • '))}</p>` : ''}
-  ${evidenceHtml}
+  <h3>Notable Details</h3>
+  ${
+    notableDetails.length
+      ? `<ul>${notableDetails.map(d => `<li>${esc(d)}</li>`).join('')}</ul>`
+      : '<p style="color:#9aa3b2">—</p>'
+  }
 </article></div></body></html>`;
 }
 
