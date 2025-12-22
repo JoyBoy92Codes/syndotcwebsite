@@ -350,6 +350,16 @@
       "title": "Daily Close Updates",
       "items": [
         {
+          "title": "Crypto Daily Update - Will Today Be The Day? MAKE OR BREAK TIME!",
+          "datePT": "2025-12-21",
+          "url": "https://youtu.be/SwEQ9UtCuQA",
+          "videoId": "SwEQ9UtCuQA",
+          "bullets": [
+            "Transcript unavailable — summary skipped."
+          ],
+          "permalink": "summaries/2025-12-21-crypto-daily-update-will-today-be-the-day-make-or-break-time.html"
+        },
+        {
           "title": "Crypto Daily Update - Slow Start To The Weekend, When Storm?",
           "datePT": "2025-12-20",
           "url": "https://youtu.be/02rHeirbark",
@@ -1420,16 +1430,6 @@
             "Transcript unavailable — summary skipped."
           ],
           "permalink": "summaries/2025-09-09-crypto-daily-close-update-09-09-2025-sol-vs-btc-crazy-times-lots-of-closes-today.html"
-        },
-        {
-          "title": "Crypto Daily Close Update | 08/09/2025 - Prime Day Part 1",
-          "datePT": "2025-09-08",
-          "url": "https://youtu.be/GLBUc5roBMk",
-          "videoId": "GLBUc5roBMk",
-          "bullets": [
-            "Transcript unavailable — summary skipped."
-          ],
-          "permalink": "summaries/2025-09-08-crypto-daily-close-update-08-09-2025-prime-day-part-1.html"
         }
       ]
     },
