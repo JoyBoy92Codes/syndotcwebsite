@@ -350,6 +350,16 @@
       "title": "Daily Close Updates",
       "items": [
         {
+          "title": "Crypto Daily Update - Has Everyone Given Up On Crypto?",
+          "datePT": "2025-12-26",
+          "url": "https://youtu.be/cqaSAX8tVUk",
+          "videoId": "cqaSAX8tVUk",
+          "bullets": [
+            "Transcript unavailable — summary skipped."
+          ],
+          "permalink": "summaries/2025-12-26-crypto-daily-update-has-everyone-given-up-on-crypto.html"
+        },
+        {
           "title": "Crypto Daily Update - More Bearish Closes Ahead For SOL? Why Is BTC Holding Up So Well?",
           "datePT": "2025-12-25",
           "url": "https://youtu.be/Hu2OmGE_qb8",
@@ -1420,16 +1430,6 @@
             "Transcript unavailable — summary skipped."
           ],
           "permalink": "summaries/2025-09-15-crypto-daily-update-15-09-2025-will-you-catch-the-next-pump.html"
-        },
-        {
-          "title": "Crypto Daily Update | 14/09/2025 - Will big players derisk?",
-          "datePT": "2025-09-14",
-          "url": "https://youtu.be/f2RalTqlPJ8",
-          "videoId": "f2RalTqlPJ8",
-          "bullets": [
-            "Transcript unavailable — summary skipped."
-          ],
-          "permalink": "summaries/2025-09-14-crypto-daily-update-14-09-2025-will-big-players-derisk.html"
         }
       ]
     },
