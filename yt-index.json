@@ -380,6 +380,16 @@
       "title": "Daily Close Updates",
       "items": [
         {
+          "title": "Crypto Daily Update - Buy The Dip Or Dip Of The Dip? Snuck In Some Education Too!",
+          "datePT": "2026-05-13",
+          "url": "https://youtu.be/pIlg1Vf_B0U",
+          "videoId": "pIlg1Vf_B0U",
+          "bullets": [
+            "Transcript unavailable — summary skipped."
+          ],
+          "permalink": "summaries/2026-05-13-crypto-daily-update-buy-the-dip-or-dip-of-the-dip-snuck-in-some-education-too.html"
+        },
+        {
           "title": "Crypto Daily Update - BTC Pump Loading - Sustainable Or Trap?",
           "datePT": "2026-05-12",
           "url": "https://youtu.be/oaffBxMx7yY",
@@ -1368,22 +1378,22 @@
             "Transcript unavailable — summary skipped."
           ],
           "permalink": "summaries/2026-02-02-crypto-daily-update-shorts-running-out-how-high-might-we-go.html"
-        },
-        {
-          "title": "Crypto Daily Update - SOL & BTC On Critical Support - Wen Soybean Tweet?",
-          "datePT": "2026-02-01",
-          "url": "https://youtu.be/SzxPACY3vNY",
-          "videoId": "SzxPACY3vNY",
-          "bullets": [
-            "Transcript unavailable — summary skipped."
-          ],
-          "permalink": "summaries/2026-02-01-crypto-daily-update-sol-btc-on-critical-support-wen-soybean-tweet.html"
         }
       ]
     },
     {
       "title": "Education",
       "items": [
+        {
+          "title": "Crypto Daily Update - Buy The Dip Or Dip Of The Dip? Snuck In Some Education Too!",
+          "datePT": "2026-05-13",
+          "url": "https://youtu.be/pIlg1Vf_B0U",
+          "videoId": "pIlg1Vf_B0U",
+          "bullets": [
+            "Transcript unavailable — summary skipped."
+          ],
+          "permalink": "summaries/2026-05-13-crypto-daily-update-buy-the-dip-or-dip-of-the-dip-snuck-in-some-education-too.html"
+        },
         {
           "title": "Private video",
           "datePT": "2026-05-12",
